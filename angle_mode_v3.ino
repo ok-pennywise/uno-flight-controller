@@ -85,11 +85,10 @@ int64_t loop_time;
 
 // States
 enum STATES { UNARMED,
-              READY_TO_ARM,
+              SAFETY_TRIP,
               ARMED };
 
 STATES state = UNARMED;
-bool safety_trip = false;
 
 // Modes
 enum FLIGHT_MODES { ANGLE_MODE,
@@ -202,22 +201,35 @@ void toggle_mode() {
 }
 
 void update_arm_state() {
+
+  // HARD DISARM (always allowed)
   if (radio_filtered_channels[CH5] < 1300) {
     state = UNARMED;
-    safety_trip = i2c_freeze_flag = false;
-  } else if (radio_filtered_channels[CH5] > 1700) {
-    if (state == UNARMED && !safety_trip && radio_filtered_channels[CH3] < 1100) state = ARMED;
+    return;
   }
 
-  if (state == ARMED && (fabs(roll_angle) > 80 || fabs(pitch_angle) > 80 || i2c_freeze_flag == 1)) {
-    state = UNARMED;
-    safety_trip = true;
+  switch (state) {
+    case UNARMED:
+      // Only allow arming if not safety-tripped
+      if (radio_filtered_channels[CH5] > 1700 && radio_filtered_channels[CH3] < 1100) state = ARMED;
+      break;
+
+    case ARMED:
+      // Safety kill
+      if (fabs(roll_angle) > 80 || fabs(pitch_angle) > 80 || i2c_freeze_flag) state = SAFETY_TRIP;
+      break;
+
+    case SAFETY_TRIP:
+      // Do nothing until disarmed
+      // (forces pilot to reset switch)
+      break;
   }
 }
 
 void translate_flight_mode() {
   switch (mode) {
     case ANGLE_MODE:
+
       desired_roll_angle =
         30.0f * ((radio_filtered_channels[CH1] - 1500.0f) / 500.0f);  // 30°
       desired_pitch_angle =
@@ -225,6 +237,7 @@ void translate_flight_mode() {
       break;
 
     case ACRO_MODE:
+    
       desired_roll_rate =
         75.0f * ((radio_filtered_channels[CH1] - 1500.0f) / 500.0f);  // 75°/s
       desired_pitch_rate =
