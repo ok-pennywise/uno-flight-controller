@@ -5,18 +5,12 @@
 #define y 1
 #define z 2
 
-// Pins
-#define PPM_PIN 32
-#define SCL_PIN 19
-#define SDA_PIN 21
 #define INTERNAL_LED_PIN 2
 
 #define RC_CH_COUNT 6
 
 // Addresses
 #define IMU_ADDR 0x68
-#define BARO_ADDR 0x77
-#define LOX_ADDR 0x29
 #define MAG_ADDR 0x2C
 
 // Times
@@ -31,6 +25,8 @@
 #define CH5 4
 #define CH6 5
 
+#define PPM_PIN 32
+
 volatile uint16_t radio_channels[RC_CH_COUNT] = { 1500, 1500, 1000, 1500, 1000, 1500 };
 float radio_filtered_channels[RC_CH_COUNT] = { 1500.0f, 1500.0f, 1000.0f, 1500.0f, 1000.0f, 1500.0f };
 volatile uint8_t channel_index;
@@ -44,7 +40,9 @@ portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
 
 int esc1, esc2, esc3, esc4;
 
-// Scales
+#define SCL_PIN 19
+#define SDA_PIN 21
+
 #define ACCEL_SCALE 0.000244f  // 1 / 4096
 #define GYRO_SCALE 0.015267f   // 1 / 65.6
 
@@ -65,10 +63,9 @@ float p_pitch_rate = p_roll_rate, i_pitch_rate = i_roll_rate, d_pitch_rate = d_r
 
 float p_yaw_rate = 3.0f, i_yaw_rate = 0.02f, d_yaw_rate = 0.0f;
 
-float roll_angle, pitch_angle, yaw_angle;
+float roll_angle, pitch_angle;
 float roll_angle_uncertainity = 4.0f;
 float pitch_angle_uncertainity = 4.0f;
-float yaw_angle_uncertainity = 4.0f;
 
 float desired_roll_rate, desired_pitch_rate, desired_yaw_rate, desired_throttle;
 float desired_roll_angle, desired_pitch_angle;
@@ -87,19 +84,19 @@ float prev_iterm_roll_angle, prev_iterm_pitch_angle;
 int64_t loop_time;
 
 // States
-#define UNARMED 0
-#define READY_TO_ARM 1
-#define ARMED 2
+enum STATES { UNARMED,
+              READY_TO_ARM,
+              ARMED };
 
-uint8_t state = UNARMED;
+STATES state = UNARMED;
 bool safety_trip = false;
 
 // Modes
-#define ANGLE_MODE 0
-#define ACRO_MODE 1
-#define POS_HOLD_MODE 2
+enum FLIGHT_MODES { ANGLE_MODE,
+                    ACRO_MODE,
+                    POS_HOLD_MODE };
 
-uint8_t mode = ACRO_MODE;
+FLIGHT_MODES mode = ACRO_MODE;
 
 uint8_t i2c_freeze_flag = 0;
 
@@ -196,32 +193,25 @@ void read_orientation() {
   // kalman_1d(&yaw_angle, &yaw_angle_uncertainity, gz, atan2(-my_h, mx_h) * RAD_TO_DEG);
 }
 
-
 void toggle_mode() {
   if (radio_filtered_channels[CH3] > 1200) return;
 
-  float channel_6 = radio_filtered_channels[CH6];
-
-  if (channel_6 > 1700) mode = POS_HOLD_MODE;
-  if (channel_6 < 1300) mode = ACRO_MODE;
-  if (channel_6 > 1300 && channel_6 < 1700) mode = ANGLE_MODE;
+  if (radio_filtered_channels[CH6] > 1700) mode = POS_HOLD_MODE;
+  else if (radio_filtered_channels[CH6] < 1300) mode = ACRO_MODE;
+  else if (radio_filtered_channels[CH6] > 1300 && radio_filtered_channels[CH6] < 1700) mode = ANGLE_MODE;
 }
 
 void update_arm_state() {
   if (radio_filtered_channels[CH5] < 1300) {
     state = UNARMED;
-    safety_trip = false;
-    i2c_freeze_flag = 0;
+    safety_trip = i2c_freeze_flag = false;
   } else if (radio_filtered_channels[CH5] > 1700) {
-    if (state == UNARMED && !safety_trip) {
-      if (radio_filtered_channels[CH3] < 1100) state = ARMED;
-    }
+    if (state == UNARMED && !safety_trip && radio_filtered_channels[CH3] < 1100) state = ARMED;
   }
-  if (state == ARMED) {
-    if (fabs(roll_angle) > 80 || fabs(pitch_angle) > 80 || i2c_freeze_flag == 1) {
-      state = UNARMED;
-      safety_trip = true;
-    }
+
+  if (state == ARMED && (fabs(roll_angle) > 80 || fabs(pitch_angle) > 80 || i2c_freeze_flag == 1)) {
+    state = UNARMED;
+    safety_trip = true;
   }
 }
 
@@ -286,8 +276,8 @@ void loop() {
     ;
   loop_time = esp_timer_get_time();
 
-  // int64_t t = esp_timer_get_time();
   imu_signal();
+
   read_radio();
 
   update_arm_state();
@@ -301,5 +291,6 @@ void loop() {
   mcpwm_set_duty_in_us(MCPWM_UNIT_0, MCPWM_TIMER_0, MCPWM_OPR_B, esc2);
   mcpwm_set_duty_in_us(MCPWM_UNIT_0, MCPWM_TIMER_1, MCPWM_OPR_A, esc3);
   mcpwm_set_duty_in_us(MCPWM_UNIT_0, MCPWM_TIMER_1, MCPWM_OPR_B, esc4);
-  // Serial.println(esp_timer_get_time() - t);
+
+  digitalWrite(INTERNAL_LED_PIN, (esp_timer_get_time() - loop_time > LOOP_CYCLE * 1e6));
 }

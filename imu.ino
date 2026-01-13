@@ -58,7 +58,7 @@ void initialize_imu() {
 void imu_signal() {
   Wire.beginTransmission(IMU_ADDR);
   Wire.write(0x3B);
-  Wire.endTransmission();
+  Wire.endTransmission(false);
   Wire.requestFrom(IMU_ADDR, 14);
 
   int64_t t = esp_timer_get_time();
