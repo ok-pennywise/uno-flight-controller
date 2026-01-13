@@ -1,16 +1,5 @@
 /*
 ------------------------------------------------
-STEP 0 — BEFORE YOU START
-------------------------------------------------
-- Props ON
-- Angle mode OFF (use ACRO / rate mode)
-- Set ALL angle PIDs to 0
-- Set Rate I = 0
-- Set Rate D = 0
-
-Only Rate P should be non-zero.
-
-------------------------------------------------
 STEP 1 — RATE P (how strong the correction is)
 ------------------------------------------------
 Goal: The quad follows stick commands without wobbling.
@@ -116,23 +105,7 @@ Example:
 Stop when:
 - Quad levels quickly
 - No oscillation when releasing stick
-
-------------------------------------------------
-IMPORTANT RULES
-------------------------------------------------
-- Change ONLY ONE value at a time
-- Test hover for 10–15 seconds
-- If unstable → LOWER values
-- Large props = lower I and D
-- Motor heat = D too high
 */
-float p_angle = 0.0f;
-
-float p_roll_rate = 0.7f, i_roll_rate = 0.0f, d_roll_rate = 0.0f;
-float p_pitch_rate = p_roll_rate, i_pitch_rate = i_roll_rate, d_pitch_rate = d_roll_rate;
-
-float p_yaw_rate = 3.0f, i_yaw_rate = 0.02f, d_yaw_rate = 0.0f;
-
 void compute_angle_correction(float error, float p, float* output) {
   *output = p * error;
 
@@ -168,29 +141,20 @@ void apply_corrections() {
     return;
   }
 
-  if (mode == ANGLE_MODE) {
-    desired_roll_angle = 30.0f * ((radio_filtered_channels[CH1] - 1500.0f) / 500.0f);   // 30°
-    desired_pitch_angle = 30.0f * ((radio_filtered_channels[CH2] - 1500.0f) / 500.0f);  // 30°
-
-    error_roll_angle = desired_roll_angle - roll_angle;
-    error_pitch_angle = desired_pitch_angle - pitch_angle;
-
-    compute_angle_correction(error_roll_angle, p_angle, &desired_roll_rate);
-    compute_angle_correction(error_pitch_angle, p_angle, &desired_pitch_rate);
-  } else {
-    desired_roll_rate = 75.0f * ((radio_filtered_channels[CH1] - 1500.0f) / 500.0f);   // 75°/s
-    desired_pitch_rate = 75.0f * ((radio_filtered_channels[CH2] - 1500.0f) / 500.0f);  // 75°/s
-  }
-
-  desired_yaw_rate = 100.0f * ((radio_filtered_channels[CH4] - 1500.0f) / 500.0f);  // 100°/s
-  desired_throttle = radio_filtered_channels[CH3];
-
   adjusted_throttle = desired_throttle;
 
   if (adjusted_throttle > 1800) adjusted_throttle = 1800;
 
   if (adjusted_throttle < 1050) {
     reset_controller();
+  }
+
+  if (mode == ANGLE_MODE) {
+    error_roll_angle = desired_roll_angle - roll_angle;
+    error_pitch_angle = desired_pitch_angle - pitch_angle;
+
+    compute_angle_correction(error_roll_angle, p_angle, &desired_roll_rate);
+    compute_angle_correction(error_pitch_angle, p_angle, &desired_pitch_rate);
   }
 
   error_roll_rate = desired_roll_rate - gx;

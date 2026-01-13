@@ -58,6 +58,13 @@ float prev_mx, prev_my, prev_mz;
 float gyro_offsets[3], accel_offsets[3];
 float mag_offsets[3], mag_scales[3];
 
+float p_angle = 0.0f;
+
+float p_roll_rate = 0.7f, i_roll_rate = 0.0f, d_roll_rate = 0.0f;
+float p_pitch_rate = p_roll_rate, i_pitch_rate = i_roll_rate, d_pitch_rate = d_roll_rate;
+
+float p_yaw_rate = 3.0f, i_yaw_rate = 0.02f, d_yaw_rate = 0.0f;
+
 float roll_angle, pitch_angle, yaw_angle;
 float roll_angle_uncertainity = 4.0f;
 float pitch_angle_uncertainity = 4.0f;
@@ -145,12 +152,12 @@ void initialize_mcpwm() {
   mcpwm_init(MCPWM_UNIT_0, MCPWM_TIMER_1, &pwm_config);  // Timer 1 handles ESC3 & 4
 }
 
-void kalman_1d(float* state, float* uncertainty, float rate, float angle_meas) {
+void kalman_1d(float* state, float* uncertainty, float rate, float angle) {
   *state += rate * LOOP_CYCLE;
   *uncertainty += LOOP_CYCLE * LOOP_CYCLE * 16.0f;  // gyro variance (4 deg/s)^2
 
   float gain = *uncertainty / (*uncertainty + 9.0f);  // accel variance (3 deg)^2
-  *state += gain * (angle_meas - *state);
+  *state += gain * (angle - *state);
   *uncertainty *= (1.0f - gain);
 }
 
@@ -191,6 +198,8 @@ void read_orientation() {
 
 
 void toggle_mode() {
+  if (radio_filtered_channels[CH3] > 1200) return;
+
   float channel_6 = radio_filtered_channels[CH6];
 
   if (channel_6 > 1700) mode = POS_HOLD_MODE;
@@ -214,6 +223,31 @@ void update_arm_state() {
       safety_trip = true;
     }
   }
+}
+
+void translate_flight_mode() {
+  switch (mode) {
+    case ANGLE_MODE:
+      desired_roll_angle =
+        30.0f * ((radio_filtered_channels[CH1] - 1500.0f) / 500.0f);  // 30°
+      desired_pitch_angle =
+        30.0f * ((radio_filtered_channels[CH2] - 1500.0f) / 500.0f);  // 30°
+      break;
+
+    case ACRO_MODE:
+      desired_roll_rate =
+        75.0f * ((radio_filtered_channels[CH1] - 1500.0f) / 500.0f);  // 75°/s
+      desired_pitch_rate =
+        75.0f * ((radio_filtered_channels[CH2] - 1500.0f) / 500.0f);  // 75°/s
+      break;
+
+    default:
+      break;
+  }
+  desired_yaw_rate =
+    100.0f * ((radio_filtered_channels[CH4] - 1500.0f) / 500.0f);  // 100°/s
+  desired_throttle =
+    radio_filtered_channels[CH3];
 }
 
 void setup() {
@@ -260,6 +294,7 @@ void loop() {
   toggle_mode();
 
   read_orientation();
+  translate_flight_mode();
   apply_corrections();
 
   mcpwm_set_duty_in_us(MCPWM_UNIT_0, MCPWM_TIMER_0, MCPWM_OPR_A, esc1);
