@@ -29,13 +29,13 @@ void initialize_imu() {
   for (int i = 0; i < samples; i++) {
     imu_signal();
 
-    ax = (float)rax * ACCEL_SCALE;
-    ay = (float)ray * ACCEL_SCALE;
-    az = (float)raz * ACCEL_SCALE;
+    ax = (float)rax / 4096.0f;
+    ay = (float)ray / 4096.0f;
+    az = (float)raz / 4096.0f;
 
-    gx = (float)rgx * GYRO_SCALE;
-    gy = (float)rgy * GYRO_SCALE;
-    gz = (float)rgz * GYRO_SCALE;
+    gx = (float)rgx / 65.5f;
+    gy = (float)rgy / 65.5f;
+    gz = (float)rgz / 65.5f;
 
     gyro_offsets[x] += gx;
     gyro_offsets[y] += gy;
@@ -51,16 +51,14 @@ void initialize_imu() {
     gyro_offsets[i] /= samples;
     accel_offsets[i] /= samples;
   }
-
-  roll_angle = pitch_angle = 0;
 }
 
 void imu_signal() {
   Wire.beginTransmission(IMU_ADDR);
   Wire.write(0x3B);
-  Wire.endTransmission(false); // If things go wrong remove this false
+  Wire.endTransmission(false);  // If things go wrong remove this false
   Wire.requestFrom(IMU_ADDR, 14);
- 
+
   int64_t t = esp_timer_get_time();
 
   while (Wire.available() < 14) {

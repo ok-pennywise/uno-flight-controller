@@ -1,4 +1,5 @@
 #include <Wire.h>
+#include <Preferences.h>
 #include "driver/mcpwm.h"
 
 #define x 0
@@ -14,7 +15,7 @@
 #define MAG_ADDR 0x2C
 
 // Times
-#define LOOP_CYCLE 0.002f  // Flying fine at P rate = 0.7 and others set to 0 so if not flying good increase loop time
+#define LOOP_CYCLE 0.002f
 #define I2C_TIMEOUT_US 500
 #define PID_MAX_OP 400
 
@@ -27,8 +28,8 @@
 
 #define PPM_PIN 32
 
-volatile uint16_t radio_channels[RC_CH_COUNT] = { 1500, 1500, 1000, 1500, 1000, 1500 };
-float radio_filtered_channels[RC_CH_COUNT] = { 1500.0f, 1500.0f, 1000.0f, 1500.0f, 1000.0f, 1500.0f };
+volatile uint16_t radio_channels[RC_CH_COUNT] = { 1500, 1500, 1000, 1500, 1000, 1000 };
+float radio_filtered_channels[RC_CH_COUNT] = { 1500.0f, 1500.0f, 1000.0f, 1500.0f, 1000.0f, 1000.0f };
 volatile uint8_t channel_index;
 volatile int64_t ppm_last_rise_time;
 portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
@@ -43,9 +44,6 @@ int esc1, esc2, esc3, esc4;
 #define SCL_PIN 19
 #define SDA_PIN 21
 
-#define ACCEL_SCALE 0.000244f  // 1 / 4096
-#define GYRO_SCALE 0.015267f   // 1 / 65.6
-
 int16_t rgx, rgy, rgz, rax, ray, raz, rmx, rmy, rmz;
 float gx, gy, gz, ax, ay, az, mx, my, mz;
 
@@ -56,12 +54,12 @@ float prev_mx, prev_my, prev_mz;
 float gyro_offsets[3], accel_offsets[3];
 float mag_offsets[3], mag_scales[3];
 
-float p_angle = 0.0f;
+const float p_angle = 0.0f;
 
-float p_roll_rate = 0.7f, i_roll_rate = 0.0f, d_roll_rate = 0.0f;
-float p_pitch_rate = p_roll_rate, i_pitch_rate = i_roll_rate, d_pitch_rate = d_roll_rate;
+const float p_roll_rate = 0.8f, i_roll_rate = 0.0f, d_roll_rate = 0.0f;
+const float p_pitch_rate = p_roll_rate, i_pitch_rate = i_roll_rate, d_pitch_rate = d_roll_rate;
 
-float p_yaw_rate = 3.0f, i_yaw_rate = 0.02f, d_yaw_rate = 0.0f;
+const float p_yaw_rate = 4.0f, i_yaw_rate = 0.03f, d_yaw_rate = 0.0f;
 
 float roll_angle, pitch_angle;
 float roll_angle_uncertainity = 4.0f;
@@ -81,8 +79,8 @@ float prev_error_roll_angle, prev_error_pitch_angle;
 float prev_iterm_roll_rate, prev_iterm_pitch_rate, prev_iterm_yaw_rate;
 float prev_iterm_roll_angle, prev_iterm_pitch_angle;
 
-int64_t loop_time;
-
+int64_t loop_time, mag_read_time;
+Preferences prefs;
 // States
 enum STATES { UNARMED,
               SAFETY_TRIP,
@@ -158,13 +156,13 @@ void kalman_1d(float* state, float* uncertainty, float rate, float angle) {
 }
 
 void read_orientation() {
-  ax = ((float)rax * ACCEL_SCALE) - accel_offsets[x];
-  ay = ((float)ray * ACCEL_SCALE) - accel_offsets[y];
-  az = ((float)raz * ACCEL_SCALE) - accel_offsets[z];
+  ax = ((float)rax / 4096.0f) - accel_offsets[x];
+  ay = ((float)ray / 4096.0f) - accel_offsets[y];
+  az = ((float)raz / 4096.0f) - accel_offsets[z];
 
-  gx = ((float)rgx * GYRO_SCALE) - gyro_offsets[x];
-  gy = ((float)rgy * GYRO_SCALE) - gyro_offsets[y];
-  gz = ((float)rgz * GYRO_SCALE) - gyro_offsets[z];
+  gx = ((float)rgx / 65.5f) - gyro_offsets[x];
+  gy = ((float)rgy / 65.5f) - gyro_offsets[y];
+  gz = ((float)rgz / 65.5f) - gyro_offsets[z];
 
   // mx = ((float)rmx - mag_offsets[x]) * mag_scales[x];
   // my = ((float)rmy - mag_offsets[y]) * mag_scales[y];
@@ -174,22 +172,6 @@ void read_orientation() {
   kalman_1d(&pitch_angle, &pitch_angle_uncertainity,
             gy,
             atan2(-ax, sqrt(ay * ay + az * az)) * RAD_TO_DEG);
-
-
-  // // --- Tilt-compensated yaw (rotation matrix) ---
-  // float roll_r = roll_angle * DEG_TO_RAD;
-  // float pitch_r = pitch_angle * DEG_TO_RAD;
-
-  // float cr = cos(roll_r);
-  // float sr = sin(roll_r);
-  // float cp = cos(pitch_r);
-  // float sp = sin(pitch_r);
-
-  // // Rotate magnetometer into horizontal plane
-  // float mx_h = mx * cp + mz * sp;
-  // float my_h = mx * sr * sp + my * cr - mz * sr * cp;
-
-  // kalman_1d(&yaw_angle, &yaw_angle_uncertainity, gz, atan2(-my_h, mx_h) * RAD_TO_DEG);
 }
 
 void toggle_mode() {
@@ -201,27 +183,30 @@ void toggle_mode() {
 }
 
 void update_arm_state() {
-
-  // HARD DISARM (always allowed)
+  // 1. HARD DISARM & RESET
+  // When switch is DOWN, we clear all errors and stay UNARMED
   if (radio_filtered_channels[CH5] < 1300) {
     state = UNARMED;
+    i2c_freeze_flag = 0;  // CRITICAL: Reset the freeze flag here
     return;
   }
 
   switch (state) {
     case UNARMED:
-      // Only allow arming if not safety-tripped
-      if (radio_filtered_channels[CH5] > 1700 && radio_filtered_channels[CH3] < 1100) state = ARMED;
+      // Check if sensors are actually healthy before allowing arm
+      if ((radio_filtered_channels[CH5] > 1700) && (radio_filtered_channels[CH3] < 1200)) state = ARMED;
       break;
 
     case ARMED:
-      // Safety kill
-      if (fabs(roll_angle) > 80 || fabs(pitch_angle) > 80 || i2c_freeze_flag) state = SAFETY_TRIP;
+      // Safety kill triggers
+      // If it immediately jumps to SAFETY_TRIP, one of these is true:
+      if (i2c_freeze_flag) state = SAFETY_TRIP;
+      if (fabs(roll_angle) > 80.0f || fabs(pitch_angle) > 80.0f) state = SAFETY_TRIP;
       break;
 
     case SAFETY_TRIP:
-      // Do nothing until disarmed
-      // (forces pilot to reset switch)
+      // Recovery: Switch must be toggled back to LOW to exit this state
+      if (radio_filtered_channels[CH5] < 1300) state = UNARMED;
       break;
   }
 }
@@ -237,7 +222,7 @@ void translate_flight_mode() {
       break;
 
     case ACRO_MODE:
-    
+
       desired_roll_rate =
         75.0f * ((radio_filtered_channels[CH1] - 1500.0f) / 500.0f);  // 75°/s
       desired_pitch_rate =
@@ -306,4 +291,5 @@ void loop() {
   mcpwm_set_duty_in_us(MCPWM_UNIT_0, MCPWM_TIMER_1, MCPWM_OPR_B, esc4);
 
   digitalWrite(INTERNAL_LED_PIN, (esp_timer_get_time() - loop_time > LOOP_CYCLE * 1e6));
+  // Serial.println(esp_timer_get_time() - loop_time);
 }

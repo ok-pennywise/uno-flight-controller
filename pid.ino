@@ -106,6 +106,7 @@ Stop when:
 - Quad levels quickly
 - No oscillation when releasing stick
 */
+
 void compute_angle_correction(float error, float p, float* output) {
   *output = p * error;
 
@@ -145,9 +146,7 @@ void apply_corrections() {
 
   if (adjusted_throttle > 1800) adjusted_throttle = 1800;
 
-  if (adjusted_throttle < 1050) {
-    reset_controller();
-  }
+  if (adjusted_throttle < 1050) reset_controller();
 
   if (mode == ANGLE_MODE) {
     error_roll_angle = desired_roll_angle - roll_angle;
@@ -163,8 +162,7 @@ void apply_corrections() {
 
   compute_rate_correction(error_roll_rate, p_roll_rate, i_roll_rate, d_roll_rate, &prev_error_roll_rate, &prev_iterm_roll_rate, gx, &prev_gx, &adjusted_roll_rate);
   compute_rate_correction(error_pitch_rate, p_pitch_rate, i_pitch_rate, d_pitch_rate, &prev_error_pitch_rate, &prev_iterm_pitch_rate, gy, &prev_gy, &adjusted_pitch_rate);
-  compute_rate_correction(-error_yaw_rate, p_yaw_rate, i_yaw_rate, d_yaw_rate, &prev_error_yaw_rate, &prev_iterm_yaw_rate, gz, &prev_gz, &adjusted_yaw_rate);
-  // Negative error for yaw
+  compute_rate_correction(error_yaw_rate, p_yaw_rate, i_yaw_rate, d_yaw_rate, &prev_error_yaw_rate, &prev_iterm_yaw_rate, gz, &prev_gz, &adjusted_yaw_rate);
 
   esc1 = adjusted_throttle - adjusted_roll_rate - adjusted_pitch_rate - adjusted_yaw_rate;
   esc2 = adjusted_throttle - adjusted_roll_rate + adjusted_pitch_rate + adjusted_yaw_rate;
