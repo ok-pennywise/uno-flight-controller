@@ -58,6 +58,15 @@ void mag_signals() {
   Wire.endTransmission(false);
 
   Wire.requestFrom(MAG_ADDR, 6);
+  
+  int64_t t = esp_timer_get_time();
+
+  while (Wire.available() < 14) {
+    if (esp_timer_get_time() - t > I2C_TIMEOUT_US) {
+      i2c_freeze_flag = 1;
+      return;
+    }
+  }
 
   rmx = Wire.read() | Wire.read() << 8;
   rmy = Wire.read() | Wire.read() << 8;

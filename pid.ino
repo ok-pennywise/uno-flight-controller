@@ -122,20 +122,20 @@ void compute_rate_correction(float error, float p, float i, float d, float* prev
   if (i_term > PID_MAX_OP) i_term = PID_MAX_OP;
   if (i_term < -PID_MAX_OP) i_term = -PID_MAX_OP;
 
-  rate = 0.7 * rate + 0.3 * (*prev_rate);
-  float d_term = -d * (rate - *prev_rate) / LOOP_CYCLE;
+  float rate_f = 0.7 * rate + 0.3 * (*prev_rate);
+  float d_term = -d * (rate_f - *prev_rate) / LOOP_CYCLE;
 
   *output = p_term + i_term + d_term;
 
   *prev_error = error;
   *prev_i_term = i_term;
-  *prev_rate = rate;
+  *prev_rate = rate_f;
 
   if (*output > PID_MAX_OP) *output = PID_MAX_OP;
   if (*output < -PID_MAX_OP) *output = -PID_MAX_OP;
 }
 
-void apply_corrections() {
+void command_corrections() {
   if (state != ARMED) {
     reset_controller();
     esc1 = esc2 = esc3 = esc4 = 1000;
@@ -152,8 +152,18 @@ void apply_corrections() {
     error_roll_angle = desired_roll_angle - roll_angle;
     error_pitch_angle = desired_pitch_angle - pitch_angle;
 
-    compute_angle_correction(error_roll_angle, p_angle, &desired_roll_rate);
-    compute_angle_correction(error_pitch_angle, p_angle, &desired_pitch_rate);
+    compute_angle_correction(error_roll_angle, p_roll_angle, &desired_roll_rate);
+    compute_angle_correction(error_pitch_angle, p_pitch_angle, &desired_pitch_rate);
+  }
+
+  if (mode == POS_HOLD_MODE) {
+    error_roll_angle = desired_roll_angle - roll_angle;
+    error_pitch_angle = desired_pitch_angle - pitch_angle;
+    error_yaw_angle = desired_yaw_angle - yaw_angle;
+
+    compute_angle_correction(error_roll_angle, p_roll_angle, &desired_roll_rate);
+    compute_angle_correction(error_pitch_angle, p_pitch_angle, &desired_pitch_rate);
+    compute_angle_correction(error_yaw_angle, p_yaw_angle, &desired_yaw_rate);
   }
 
   error_roll_rate = desired_roll_rate - gx;

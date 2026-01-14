@@ -28,8 +28,8 @@
 
 #define PPM_PIN 32
 
-volatile uint16_t radio_channels[RC_CH_COUNT] = { 1500, 1500, 1000, 1500, 1000, 1000 };
-float radio_filtered_channels[RC_CH_COUNT] = { 1500.0f, 1500.0f, 1000.0f, 1500.0f, 1000.0f, 1000.0f };
+volatile uint16_t radio[RC_CH_COUNT] = { 1500, 1500, 1000, 1500, 1000, 1000 };
+float radio_filtered[RC_CH_COUNT] = { 1500.0f, 1500.0f, 1000.0f, 1500.0f, 1000.0f, 1000.0f };
 volatile uint8_t channel_index;
 volatile int64_t ppm_last_rise_time;
 portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
@@ -44,40 +44,37 @@ int esc1, esc2, esc3, esc4;
 #define SCL_PIN 19
 #define SDA_PIN 21
 
-int16_t rgx, rgy, rgz, rax, ray, raz, rmx, rmy, rmz;
-float gx, gy, gz, ax, ay, az, mx, my, mz;
+int16_t rgx, rgy, rgz, rax, ray, raz, rmx, rmy, rmz, rvx, rvy, rvz;
+float gx, gy, gz, ax, ay, az, mx, my, mz, vx, vy, vz;
 
-float prev_gx, prev_gy, prev_gz;
-float prev_ax, prev_ay, prev_az;
-float prev_mx, prev_my, prev_mz;
+float prev_gx, prev_gy, prev_gz, prev_ax, prev_ay, prev_az, prev_mx, prev_my, prev_mz, prev_vx, prev_vy, prev_vz;
 
 float gyro_offsets[3], accel_offsets[3];
 float mag_offsets[3], mag_scales[3];
 
-const float p_angle = 0.0f;
+const float p_roll_angle = 0.0f, p_pitch_angle = p_roll_angle, p_yaw_angle = 0.0f;
 
 const float p_roll_rate = 0.8f, i_roll_rate = 0.0f, d_roll_rate = 0.0f;
 const float p_pitch_rate = p_roll_rate, i_pitch_rate = i_roll_rate, d_pitch_rate = d_roll_rate;
 
 const float p_yaw_rate = 4.0f, i_yaw_rate = 0.03f, d_yaw_rate = 0.0f;
 
-float roll_angle, pitch_angle;
-float roll_angle_uncertainity = 4.0f;
-float pitch_angle_uncertainity = 4.0f;
+float roll_angle, pitch_angle, yaw_angle;
+float roll_angle_uncertainity = 4.0f, pitch_angle_uncertainity = 4.0f, yaw_angle_uncertainity = 4.0f;
 
 float desired_roll_rate, desired_pitch_rate, desired_yaw_rate, desired_throttle;
-float desired_roll_angle, desired_pitch_angle;
+float desired_roll_angle, desired_pitch_angle, desired_yaw_angle;
 
 float adjusted_roll_rate, adjusted_pitch_rate, adjusted_yaw_rate, adjusted_throttle;
 
 float error_roll_rate, error_pitch_rate, error_yaw_rate;
-float error_roll_angle, error_pitch_angle;
+float error_roll_angle, error_pitch_angle, error_yaw_angle;
 
 float prev_error_roll_rate, prev_error_pitch_rate, prev_error_yaw_rate;
-float prev_error_roll_angle, prev_error_pitch_angle;
+float prev_error_roll_angle, prev_error_pitch_angle, prev_error_yaw_angle;
 
 float prev_iterm_roll_rate, prev_iterm_pitch_rate, prev_iterm_yaw_rate;
-float prev_iterm_roll_angle, prev_iterm_pitch_angle;
+float prev_iterm_roll_angle, prev_iterm_pitch_angle, prev_iterm_yaw_angle;
 
 int64_t loop_time, mag_read_time;
 Preferences prefs;
@@ -106,7 +103,7 @@ void IRAM_ATTR radio_ppm_isr() {
     channel_index = 0;
   } else {
     if (channel_index < RC_CH_COUNT) {
-      radio_channels[channel_index] = us;
+      radio[channel_index] = us;
       channel_index++;
     }
   }
@@ -115,7 +112,7 @@ void IRAM_ATTR radio_ppm_isr() {
 void read_radio() {
   portENTER_CRITICAL(&mux);
   float pulses[RC_CH_COUNT];
-  for (int i = 0; i < RC_CH_COUNT; i++) pulses[i] = radio_channels[i];
+  for (int i = 0; i < RC_CH_COUNT; i++) pulses[i] = radio[i];
   portEXIT_CRITICAL(&mux);
 
   for (int i = 0; i < RC_CH_COUNT; i++) {
@@ -125,7 +122,7 @@ void read_radio() {
     if (pulse < 1000.0f) pulse = 1000.0f;
 
     if (i != CH3 && pulse > 1490.0f && pulse < 1510.0f) pulse = 1500.0f;
-    radio_filtered_channels[i] = pulse;
+    radio_filtered[i] = pulse;
   }
 }
 
@@ -164,28 +161,43 @@ void read_orientation() {
   gy = ((float)rgy / 65.5f) - gyro_offsets[y];
   gz = ((float)rgz / 65.5f) - gyro_offsets[z];
 
-  // mx = ((float)rmx - mag_offsets[x]) * mag_scales[x];
-  // my = ((float)rmy - mag_offsets[y]) * mag_scales[y];
-  // mz = ((float)rmz - mag_offsets[z]) * mag_scales[z];
+  mx = ((float)rmx - mag_offsets[x]) * mag_scales[x];
+  my = ((float)rmy - mag_offsets[y]) * mag_scales[y];
+  mz = ((float)rmz - mag_offsets[z]) * mag_scales[z];
 
   kalman_1d(&roll_angle, &roll_angle_uncertainity, gx, atan2(ay, az) * RAD_TO_DEG);
   kalman_1d(&pitch_angle, &pitch_angle_uncertainity,
             gy,
             atan2(-ax, sqrt(ay * ay + az * az)) * RAD_TO_DEG);
+
+  float cr = cos(roll_angle * DEG_TO_RAD);
+  float sr = sin(roll_angle * DEG_TO_RAD);
+
+  float cp = cos(pitch_angle * DEG_TO_RAD);
+  float sp = sin(pitch_angle * DEG_TO_RAD);
+
+  // Project magnetometer readings onto the horizontal plane
+  float mx_h = mx * cp + mz * sp;
+  float my_h = mx * sr * sp + my * cr - mz * sr * cp;
+
+  kalman_1d(&yaw_angle, &yaw_angle_uncertainity, gz, atan2(my_h, mx_h) * RAD_TO_DEG);
+
+  if (yaw_angle > 180.0f) yaw_angle -= 360.0f;
+  if (yaw_angle < -180.0f) yaw_angle += 360.0f;
 }
 
 void toggle_mode() {
-  if (radio_filtered_channels[CH3] > 1200) return;
+  if (radio_filtered[CH3] > 1200) return;
 
-  if (radio_filtered_channels[CH6] > 1700) mode = POS_HOLD_MODE;
-  else if (radio_filtered_channels[CH6] < 1300) mode = ACRO_MODE;
-  else if (radio_filtered_channels[CH6] > 1300 && radio_filtered_channels[CH6] < 1700) mode = ANGLE_MODE;
+  if (radio_filtered[CH6] > 1700) mode = POS_HOLD_MODE;
+  else if (radio_filtered[CH6] < 1300) mode = ACRO_MODE;
+  else if (radio_filtered[CH6] > 1300 && radio_filtered[CH6] < 1700) mode = ANGLE_MODE;
 }
 
 void update_arm_state() {
   // 1. HARD DISARM & RESET
   // When switch is DOWN, we clear all errors and stay UNARMED
-  if (radio_filtered_channels[CH5] < 1300) {
+  if (radio_filtered[CH5] < 1300) {
     state = UNARMED;
     i2c_freeze_flag = 0;  // CRITICAL: Reset the freeze flag here
     return;
@@ -194,7 +206,7 @@ void update_arm_state() {
   switch (state) {
     case UNARMED:
       // Check if sensors are actually healthy before allowing arm
-      if ((radio_filtered_channels[CH5] > 1700) && (radio_filtered_channels[CH3] < 1200)) state = ARMED;
+      if ((radio_filtered[CH5] > 1700) && (radio_filtered[CH3] < 1200)) state = ARMED;
       break;
 
     case ARMED:
@@ -206,7 +218,7 @@ void update_arm_state() {
 
     case SAFETY_TRIP:
       // Recovery: Switch must be toggled back to LOW to exit this state
-      if (radio_filtered_channels[CH5] < 1300) state = UNARMED;
+      if (radio_filtered[CH5] < 1300) state = UNARMED;
       break;
   }
 }
@@ -216,26 +228,29 @@ void translate_flight_mode() {
     case ANGLE_MODE:
 
       desired_roll_angle =
-        30.0f * ((radio_filtered_channels[CH1] - 1500.0f) / 500.0f);  // 30°
+        30.0f * ((radio_filtered[CH1] - 1500.0f) / 500.0f);  // 30°
       desired_pitch_angle =
-        30.0f * ((radio_filtered_channels[CH2] - 1500.0f) / 500.0f);  // 30°
+        30.0f * ((radio_filtered[CH2] - 1500.0f) / 500.0f);  // 30°
+      desired_yaw_rate =
+        100.0f * ((radio_filtered[CH4] - 1500.0f) / 500.0f);  // 100°/s
       break;
 
     case ACRO_MODE:
 
       desired_roll_rate =
-        75.0f * ((radio_filtered_channels[CH1] - 1500.0f) / 500.0f);  // 75°/s
+        75.0f * ((radio_filtered[CH1] - 1500.0f) / 500.0f);  // 75°/s
       desired_pitch_rate =
-        75.0f * ((radio_filtered_channels[CH2] - 1500.0f) / 500.0f);  // 75°/s
+        75.0f * ((radio_filtered[CH2] - 1500.0f) / 500.0f);  // 75°/s
+      desired_yaw_rate =
+        100.0f * ((radio_filtered[CH4] - 1500.0f) / 500.0f);  // 100°/s
       break;
 
-    default:
+    case POS_HOLD_MODE:
+      desired_pitch_angle = desired_roll_angle = desired_yaw_angle = 0.0f;
       break;
   }
-  desired_yaw_rate =
-    100.0f * ((radio_filtered_channels[CH4] - 1500.0f) / 500.0f);  // 100°/s
   desired_throttle =
-    radio_filtered_channels[CH3];
+    radio_filtered[CH3];
 }
 
 void setup() {
@@ -262,6 +277,7 @@ void setup() {
   delay(2000);
 
   initialize_imu();
+  initialize_mag();
 
   attachInterrupt(digitalPinToInterrupt(PPM_PIN), radio_ppm_isr, RISING);
 
@@ -276,6 +292,11 @@ void loop() {
 
   imu_signal();
 
+  if (esp_timer_get_time() - mag_read_time > 0.005) {
+    mag_signals();
+    mag_read_time = esp_timer_get_time();
+  }  // 200Hz
+
   read_radio();
 
   update_arm_state();
@@ -283,7 +304,7 @@ void loop() {
 
   read_orientation();
   translate_flight_mode();
-  apply_corrections();
+  command_corrections();
 
   mcpwm_set_duty_in_us(MCPWM_UNIT_0, MCPWM_TIMER_0, MCPWM_OPR_A, esc1);
   mcpwm_set_duty_in_us(MCPWM_UNIT_0, MCPWM_TIMER_0, MCPWM_OPR_B, esc2);
