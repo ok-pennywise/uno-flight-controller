@@ -87,8 +87,7 @@ STATES state = UNARMED;
 
 // Modes
 enum FLIGHT_MODES { ANGLE_MODE,
-                    ACRO_MODE,
-                    POS_HOLD_MODE };
+                    ACRO_MODE };
 
 FLIGHT_MODES mode = ACRO_MODE;
 
@@ -161,37 +160,36 @@ void read_orientation() {
   gy = ((float)rgy / 65.5f) - gyro_offsets[y];
   gz = ((float)rgz / 65.5f) - gyro_offsets[z];
 
-  mx = ((float)rmx - mag_offsets[x]) * mag_scales[x];
-  my = ((float)rmy - mag_offsets[y]) * mag_scales[y];
-  mz = ((float)rmz - mag_offsets[z]) * mag_scales[z];
+  // mx = ((float)rmx - mag_offsets[x]) * mag_scales[x];
+  // my = ((float)rmy - mag_offsets[y]) * mag_scales[y];
+  // mz = ((float)rmz - mag_offsets[z]) * mag_scales[z];
 
   kalman_1d(&roll_angle, &roll_angle_uncertainity, gx, atan2(ay, az) * RAD_TO_DEG);
   kalman_1d(&pitch_angle, &pitch_angle_uncertainity,
             gy,
             atan2(-ax, sqrt(ay * ay + az * az)) * RAD_TO_DEG);
 
-  float cr = cos(roll_angle * DEG_TO_RAD);
-  float sr = sin(roll_angle * DEG_TO_RAD);
+  // float cr = cos(roll_angle * DEG_TO_RAD);
+  // float sr = sin(roll_angle * DEG_TO_RAD);
 
-  float cp = cos(pitch_angle * DEG_TO_RAD);
-  float sp = sin(pitch_angle * DEG_TO_RAD);
+  // float cp = cos(pitch_angle * DEG_TO_RAD);
+  // float sp = sin(pitch_angle * DEG_TO_RAD);
 
-  // Project magnetometer readings onto the horizontal plane
-  float mx_h = mx * cp + mz * sp;
-  float my_h = mx * sr * sp + my * cr - mz * sr * cp;
+  // // Project magnetometer readings onto the horizontal plane
+  // float mx_h = mx * cp + mz * sp;
+  // float my_h = mx * sr * sp + my * cr - mz * sr * cp;
 
-  kalman_1d(&yaw_angle, &yaw_angle_uncertainity, gz, atan2(my_h, mx_h) * RAD_TO_DEG);
+  // yaw_angle = atan2(my_h, mx_h) * RAD_TO_DEG;
+  // // kalman_1d(&yaw_angle, &yaw_angle_uncertainity, gz, atan2(my_h, mx_h) * RAD_TO_DEG);
 
-  if (yaw_angle > 180.0f) yaw_angle -= 360.0f;
-  if (yaw_angle < -180.0f) yaw_angle += 360.0f;
+  // // if (yaw_angle > 180.0f) yaw_angle -= 360.0f;
+  // // if (yaw_angle < -180.0f) yaw_angle += 360.0f;
 }
 
 void toggle_mode() {
   if (radio_filtered[CH3] > 1200) return;
-
-  if (radio_filtered[CH6] > 1700) mode = POS_HOLD_MODE;
   else if (radio_filtered[CH6] < 1300) mode = ACRO_MODE;
-  else if (radio_filtered[CH6] > 1300 && radio_filtered[CH6] < 1700) mode = ANGLE_MODE;
+  else if (radio_filtered[CH6] > 1700) mode = ANGLE_MODE;
 }
 
 void update_arm_state() {
@@ -244,10 +242,6 @@ void translate_flight_mode() {
       desired_yaw_rate =
         100.0f * ((radio_filtered[CH4] - 1500.0f) / 500.0f);  // 100°/s
       break;
-
-    case POS_HOLD_MODE:
-      desired_pitch_angle = desired_roll_angle = desired_yaw_angle = 0.0f;
-      break;
   }
   desired_throttle =
     radio_filtered[CH3];
@@ -277,7 +271,6 @@ void setup() {
   delay(2000);
 
   initialize_imu();
-  initialize_mag();
 
   attachInterrupt(digitalPinToInterrupt(PPM_PIN), radio_ppm_isr, RISING);
 
@@ -292,10 +285,10 @@ void loop() {
 
   imu_signal();
 
-  if (esp_timer_get_time() - mag_read_time > 0.005) {
-    mag_signals();
-    mag_read_time = esp_timer_get_time();
-  }  // 200Hz
+  // if (esp_timer_get_time() - mag_read_time > 0.005) {
+  //   mag_signals();
+  //   mag_read_time = esp_timer_get_time();
+  // }  // 200Hz
 
   read_radio();
 
@@ -312,5 +305,4 @@ void loop() {
   mcpwm_set_duty_in_us(MCPWM_UNIT_0, MCPWM_TIMER_1, MCPWM_OPR_B, esc4);
 
   digitalWrite(INTERNAL_LED_PIN, (esp_timer_get_time() - loop_time > LOOP_CYCLE * 1e6));
-  // Serial.println(esp_timer_get_time() - loop_time);
 }

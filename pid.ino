@@ -156,16 +156,6 @@ void command_corrections() {
     compute_angle_correction(error_pitch_angle, p_pitch_angle, &desired_pitch_rate);
   }
 
-  if (mode == POS_HOLD_MODE) {
-    error_roll_angle = desired_roll_angle - roll_angle;
-    error_pitch_angle = desired_pitch_angle - pitch_angle;
-    error_yaw_angle = desired_yaw_angle - yaw_angle;
-
-    compute_angle_correction(error_roll_angle, p_roll_angle, &desired_roll_rate);
-    compute_angle_correction(error_pitch_angle, p_pitch_angle, &desired_pitch_rate);
-    compute_angle_correction(error_yaw_angle, p_yaw_angle, &desired_yaw_rate);
-  }
-
   error_roll_rate = desired_roll_rate - gx;
   error_pitch_rate = desired_pitch_rate - gy;
   error_yaw_rate = desired_yaw_rate - gz;
@@ -193,16 +183,18 @@ void command_corrections() {
 
 void reset_controller() {
   adjusted_roll_rate = adjusted_pitch_rate = adjusted_yaw_rate = adjusted_throttle = 0;
+  
   prev_error_roll_rate = prev_error_pitch_rate = prev_error_yaw_rate = 0;
   prev_iterm_roll_rate = prev_iterm_pitch_rate = prev_iterm_yaw_rate = 0;
 
-  prev_error_roll_angle = prev_error_pitch_angle = 0;
-  prev_iterm_roll_angle = prev_iterm_pitch_angle = 0;
+  prev_error_roll_angle = prev_error_pitch_angle = prev_error_yaw_angle = 0;
+  prev_iterm_roll_angle = prev_iterm_pitch_angle = prev_iterm_yaw_angle = 0;
 
-  desired_roll_angle = desired_pitch_angle = 0;
+  desired_roll_angle = desired_pitch_angle = desired_yaw_angle = 0;
   desired_roll_rate = desired_pitch_rate = desired_yaw_rate = 0;
 
   prev_gx = prev_gy = prev_gz = 0;
   prev_ax = prev_ay = prev_az = 0;
   prev_mx = prev_my = prev_mz = 0;
+  prev_vx = prev_vy = prev_vz = 0;
 }
