@@ -44,31 +44,22 @@ void initialize_mag() {
   prefs.end();
 }
 
-void mag_signals() {
-  Wire.beginTransmission(MAG_ADDR);
-  Wire.write(0x09);
-  Wire.endTransmission(false);
 
-  Wire.requestFrom(MAG_ADDR, 1);
-
-  if (!(Wire.read() & 0x01)) return;  // Exit if DRDY bit is not 1
-
+void mag_signal() {
   Wire.beginTransmission(MAG_ADDR);
   Wire.write(0x01);
   Wire.endTransmission(false);
-
   Wire.requestFrom(MAG_ADDR, 6);
-  
+
   int64_t t = esp_timer_get_time();
 
-  while (Wire.available() < 14) {
+  while (Wire.available() < 6) {
     if (esp_timer_get_time() - t > I2C_TIMEOUT_US) {
       i2c_freeze_flag = 1;
       return;
     }
   }
-
-  rmx = Wire.read() | Wire.read() << 8;
-  rmy = Wire.read() | Wire.read() << 8;
-  rmz = Wire.read() | Wire.read() << 8;
+  rmx = (int16_t)(Wire.read() | (Wire.read() << 8));
+  rmy = (int16_t)(Wire.read() | (Wire.read() << 8));
+  rmz = (int16_t)(Wire.read() | (Wire.read() << 8));
 }

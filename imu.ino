@@ -56,7 +56,7 @@ void initialize_imu() {
 void imu_signal() {
   Wire.beginTransmission(IMU_ADDR);
   Wire.write(0x3B);
-  Wire.endTransmission(false);  // If things go wrong remove this false
+  Wire.endTransmission(false);
   Wire.requestFrom(IMU_ADDR, 14);
 
   int64_t t = esp_timer_get_time();
@@ -68,14 +68,14 @@ void imu_signal() {
     }
   }
 
-  rax = Wire.read() << 8 | Wire.read();
-  ray = Wire.read() << 8 | Wire.read();
-  raz = Wire.read() << 8 | Wire.read();
+  rax = (int16_t)(Wire.read() << 8 | Wire.read());
+  ray = (int16_t)(Wire.read() << 8 | Wire.read());
+  raz = (int16_t)(Wire.read() << 8 | Wire.read());
 
   Wire.read();
   Wire.read();
 
-  rgx = Wire.read() << 8 | Wire.read();
-  rgy = Wire.read() << 8 | Wire.read();
-  rgz = Wire.read() << 8 | Wire.read();
+  rgx = (int16_t)(Wire.read() << 8 | Wire.read());
+  rgy = (int16_t)(Wire.read() << 8 | Wire.read());
+  rgz = (int16_t)(Wire.read() << 8 | Wire.read());
 }

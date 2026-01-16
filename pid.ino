@@ -180,21 +180,22 @@ void command_corrections() {
   if (esc4 > 2000) esc4 = 2000;
 }
 
-
 void reset_controller() {
-  adjusted_roll_rate = adjusted_pitch_rate = adjusted_yaw_rate = adjusted_throttle = 0;
-  
-  prev_error_roll_rate = prev_error_pitch_rate = prev_error_yaw_rate = 0;
-  prev_iterm_roll_rate = prev_iterm_pitch_rate = prev_iterm_yaw_rate = 0;
+  adjusted_roll_rate = adjusted_pitch_rate = adjusted_yaw_rate = adjusted_throttle = 0.0f;
 
-  prev_error_roll_angle = prev_error_pitch_angle = prev_error_yaw_angle = 0;
-  prev_iterm_roll_angle = prev_iterm_pitch_angle = prev_iterm_yaw_angle = 0;
+  prev_error_roll_rate = prev_error_pitch_rate = prev_error_yaw_rate = 0.0f;
+  prev_iterm_roll_rate = prev_iterm_pitch_rate = prev_iterm_yaw_rate = 0.0f;
 
-  desired_roll_angle = desired_pitch_angle = desired_yaw_angle = 0;
-  desired_roll_rate = desired_pitch_rate = desired_yaw_rate = 0;
+  prev_error_roll_angle = prev_error_pitch_angle = prev_error_yaw_angle = 0.0f;
+  prev_iterm_roll_angle = prev_iterm_pitch_angle = prev_iterm_yaw_angle = 0.0f;
 
-  prev_gx = prev_gy = prev_gz = 0;
-  prev_ax = prev_ay = prev_az = 0;
-  prev_mx = prev_my = prev_mz = 0;
-  prev_vx = prev_vy = prev_vz = 0;
+  desired_roll_angle = desired_pitch_angle = desired_yaw_angle = 0.0f;
+  desired_roll_rate = desired_pitch_rate = desired_yaw_rate = 0.0f;
+
+  prev_gx = prev_gy = prev_gz = 0.0f;
+  prev_ax = prev_ay = prev_az = 0.0f;
+  prev_mx = prev_my = prev_mz = 0.0f;
+  prev_vx = prev_vy = prev_vz = 0.0f;
+
+  prev_roll_angle = prev_pitch_angle = prev_yaw_angle = 0.0f;
 }
