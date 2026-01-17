@@ -1,21 +1,21 @@
 void initialize_imu() {
   Wire.beginTransmission(IMU_ADDR);
   Wire.write(0x6B);
-  Wire.write(0x00);  // Power on
+  Wire.write(0x00);
   Wire.endTransmission();
 
   Wire.beginTransmission(IMU_ADDR);
   Wire.write(0x1A);
-  Wire.write(0x03);  // DLF 44Hz
+  Wire.write(0x03);
   Wire.endTransmission();
 
   Wire.beginTransmission(IMU_ADDR);
   Wire.write(0x1C);
-  Wire.write(0x10);  // Accel config ±8g
+  Wire.write(0x10);
   Wire.endTransmission();
 
   Wire.beginTransmission(IMU_ADDR);
-  Wire.write(0x1B);  // Gyro config ±500°/s
+  Wire.write(0x1B);
   Wire.write(0x08);
   Wire.endTransmission();
 
@@ -29,13 +29,13 @@ void initialize_imu() {
   for (int i = 0; i < samples; i++) {
     imu_signal();
 
-    ax = (float)rax / 4096.0f;
-    ay = (float)ray / 4096.0f;
-    az = (float)raz / 4096.0f;
+    ax = (float)rax * accel_scale;
+    ay = (float)ray * accel_scale;
+    az = (float)raz * accel_scale;
 
-    gx = (float)rgx / 65.5f;
-    gy = (float)rgy / 65.5f;
-    gz = (float)rgz / 65.5f;
+    gx = (float)rgx * gyro_scale;
+    gy = (float)rgy * gyro_scale;
+    gz = (float)rgz * gyro_scale;
 
     gyro_offsets[x] += gx;
     gyro_offsets[y] += gy;
@@ -57,16 +57,11 @@ void imu_signal() {
   Wire.beginTransmission(IMU_ADDR);
   Wire.write(0x3B);
   Wire.endTransmission(false);
+
   Wire.requestFrom(IMU_ADDR, 14);
 
-  int64_t t = esp_timer_get_time();
-
-  while (Wire.available() < 14) {
-    if (esp_timer_get_time() - t > I2C_TIMEOUT_US) {
-      i2c_freeze_flag = 1;
-      return;
-    }
-  }
+  while (Wire.available() < 14)
+    ;
 
   rax = (int16_t)(Wire.read() << 8 | Wire.read());
   ray = (int16_t)(Wire.read() << 8 | Wire.read());

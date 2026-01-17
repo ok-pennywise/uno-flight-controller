@@ -14,10 +14,8 @@
 #define IMU_ADDR 0x68
 #define MAG_ADDR 0x2C
 
-// Times
-#define LOOP_CYCLE 0.002f
-#define I2C_TIMEOUT_US 500
-#define PID_MAX_OP 400
+constexpr float loop_cycle = 0.002f;
+constexpr uint8_t pid_max_op = 400;
 
 #define CH1 0
 #define CH2 1
@@ -44,6 +42,9 @@ int esc1, esc2, esc3, esc4;
 #define SCL_PIN 19
 #define SDA_PIN 21
 
+constexpr float accel_scale = 0.0002441;  // 1 / 4096 -> 7 digits
+constexpr float gyro_scale = 0.0152671;   // 1 / 65.5 -> 7 digits
+
 int16_t rgx, rgy, rgz, rax, ray, raz, rmx, rmy, rmz, rvx, rvy, rvz;
 float gx, gy, gz, ax, ay, az, mx, my, mz, vx, vy, vz;
 
@@ -52,12 +53,12 @@ float prev_gx, prev_gy, prev_gz, prev_ax, prev_ay, prev_az, prev_mx, prev_my, pr
 float gyro_offsets[3], accel_offsets[3];
 float mag_offsets[3], mag_scales[3];
 
-const float p_roll_angle = 0.0f, p_pitch_angle = p_roll_angle, p_yaw_angle = 0.0f;
+constexpr float p_roll_angle = 0.0f, p_pitch_angle = p_roll_angle, p_yaw_angle = 0.0f;
 
-const float p_roll_rate = 0.8f, i_roll_rate = 0.0f, d_roll_rate = 0.0f;
-const float p_pitch_rate = p_roll_rate, i_pitch_rate = i_roll_rate, d_pitch_rate = d_roll_rate;
+constexpr float p_roll_rate = 0.8f, i_roll_rate = 0.0f, d_roll_rate = 0.0f;
+constexpr float p_pitch_rate = p_roll_rate, i_pitch_rate = i_roll_rate, d_pitch_rate = d_roll_rate;
 
-const float p_yaw_rate = 4.0f, i_yaw_rate = 0.03f, d_yaw_rate = 0.0f;
+constexpr float p_yaw_rate = 4.0f, i_yaw_rate = 0.03f, d_yaw_rate = 0.0f;
 
 float roll_angle, pitch_angle, yaw_angle;
 float prev_roll_angle, prev_pitch_angle, prev_yaw_angle;
@@ -77,6 +78,8 @@ float prev_error_roll_angle, prev_error_pitch_angle, prev_error_yaw_angle;
 float prev_iterm_roll_rate, prev_iterm_pitch_rate, prev_iterm_yaw_rate;
 float prev_iterm_roll_angle, prev_iterm_pitch_angle, prev_iterm_yaw_angle;
 
+constexpr float mag_declination = -0.25f;
+
 int64_t loop_time;
 
 Preferences prefs;
@@ -89,11 +92,10 @@ STATES state = UNARMED;
 
 // Modes
 enum FLIGHT_MODES { ANGLE_MODE,
-                    ACRO_MODE };
+                    ACRO_MODE,
+                    POS_HOLD_MODE };
 
 FLIGHT_MODES mode = ACRO_MODE;
-
-uint8_t i2c_freeze_flag = 0;
 
 void IRAM_ATTR radio_ppm_isr() {
   int64_t current_time = esp_timer_get_time();
@@ -134,7 +136,7 @@ void initialize_mcpwm() {
   mcpwm_gpio_init(MCPWM_UNIT_0, MCPWM1B, ESC4_PIN);
 
   mcpwm_config_t pwm_config;
-  pwm_config.frequency = (uint16_t)(1 / LOOP_CYCLE);
+  pwm_config.frequency = (uint16_t)(1 / loop_cycle);
   pwm_config.cmpr_a = 0;
   pwm_config.cmpr_b = 0;
   pwm_config.counter_mode = MCPWM_UP_COUNTER;
@@ -145,8 +147,8 @@ void initialize_mcpwm() {
 }
 
 void kalman_1d(float* state, float* uncertainty, float rate, float angle) {
-  *state += rate * LOOP_CYCLE;
-  *uncertainty += LOOP_CYCLE * LOOP_CYCLE * 16.0f;  // gyro variance (4 deg/s)^2
+  *state += rate * loop_cycle;
+  *uncertainty += loop_cycle * loop_cycle * 16.0f;  // gyro variance (4 deg/s)^2
 
   float gain = *uncertainty / (*uncertainty + 9.0f);  // accel variance (3 deg)^2
   *state += gain * (angle - *state);
@@ -154,17 +156,17 @@ void kalman_1d(float* state, float* uncertainty, float rate, float angle) {
 }
 
 void read_orientation() {
-  ax = ((float)rax / 4096.0f) - accel_offsets[x];
-  ay = ((float)ray / 4096.0f) - accel_offsets[y];
-  az = ((float)raz / 4096.0f) - accel_offsets[z];
+  ax = ((float)rax * accel_scale) - accel_offsets[x];
+  ay = ((float)ray * accel_scale) - accel_offsets[y];
+  az = ((float)raz * accel_scale) - accel_offsets[z];
 
-  gx = ((float)rgx / 65.5f) - gyro_offsets[x];
-  gy = ((float)rgy / 65.5f) - gyro_offsets[y];
-  gz = ((float)rgz / 65.5f) - gyro_offsets[z];
+  gx = ((float)rgx * gyro_scale) - gyro_offsets[x];
+  gy = ((float)rgy * gyro_scale) - gyro_offsets[y];
+  gz = ((float)rgz * gyro_scale) - gyro_offsets[z];
 
-  mx = ((float)rmx - mag_offsets[x]) * mag_scales[x];
-  my = ((float)rmy - mag_offsets[y]) * mag_scales[y];
-  mz = ((float)rmz - mag_offsets[z]) * mag_scales[z];
+  // mx = ((float)rmx - mag_offsets[x]) * mag_scales[x];
+  // my = ((float)rmy - mag_offsets[y]) * mag_scales[y];
+  // mz = ((float)rmz - mag_offsets[z]) * mag_scales[z];
 
   kalman_1d(&roll_angle, &roll_angle_uncertainity, gx, atan2f(ay, az) * RAD_TO_DEG);
   kalman_1d(&pitch_angle, &pitch_angle_uncertainity,
@@ -174,22 +176,23 @@ void read_orientation() {
   prev_roll_angle = roll_angle;
   prev_pitch_angle = pitch_angle;
 
-  float cr = cosf(roll_angle * DEG_TO_RAD);
-  float sr = sinf(roll_angle * DEG_TO_RAD);
+  // float cr = cosf(roll_angle * DEG_TO_RAD);
+  // float sr = sinf(roll_angle * DEG_TO_RAD);
 
-  float cp = cosf(pitch_angle * DEG_TO_RAD);
-  float sp = sinf(pitch_angle * DEG_TO_RAD);
+  // float cp = cosf(pitch_angle * DEG_TO_RAD);
+  // float sp = sinf(pitch_angle * DEG_TO_RAD);
 
-  // // Project magnetometer readings onto the horizontal plane
-  float mx_horizintal = mx * cp + mz * sp;
-  float my_horizintal = mx * sr * sp + my * cr - mz * sr * cp;
+  // // // Project magnetometer readings onto the horizontal plane
+  // float mx_horizintal = mx * cp + mz * sp;
+  // float my_horizintal = mx * sr * sp + my * cr - mz * sr * cp;
 
-  yaw_angle = atan2f(my_horizintal, mx_horizintal) * RAD_TO_DEG;
+  // yaw_angle = atan2f(my_horizintal, mx_horizintal) * RAD_TO_DEG;
+  // yaw_angle += mag_declination;
 
-  if (yaw_angle > 180.0f) yaw_angle -= 360.0f;
-  if (yaw_angle < -180.0f) yaw_angle += 360.0f;
+  // if (yaw_angle < 0.0f) yaw_angle += 360.0f;
+  // if (yaw_angle >= 360.0f) yaw_angle -= 360.0f;
 
-  prev_yaw_angle = yaw_angle;
+  // prev_yaw_angle = yaw_angle;
 }
 
 void toggle_mode() {
@@ -202,7 +205,6 @@ void update_arm_state() {
   // When switch is down, we clear all errors and stay UNARMED
   if (radio_filtered[CH5] < 1300) {
     state = UNARMED;
-    i2c_freeze_flag = 0;  // CRITICAL: Reset the freeze flag here
     return;
   }
 
@@ -215,8 +217,7 @@ void update_arm_state() {
     case ARMED:
       // Safety kill triggers
       // If it immediately jumps to SAFETY_TRIP, one of these is true:
-      if (i2c_freeze_flag) state = SAFETY_TRIP;
-      if (fabsf(roll_angle) > 80.0f || fabsf(pitch_angle) > 80.0f) state = SAFETY_TRIP;
+      if (roll_angle > 80.0f || roll_angle < -80.0f || pitch_angle > 80.0f || pitch_angle < -80.0f) state = SAFETY_TRIP;
       break;
 
     case SAFETY_TRIP:
@@ -276,7 +277,7 @@ void setup() {
   delay(2000);
 
   initialize_imu();
-  initialize_mag();
+  // initialize_mag();
 
   attachInterrupt(digitalPinToInterrupt(PPM_PIN), radio_ppm_isr, RISING);
   loop_time = esp_timer_get_time();
@@ -285,7 +286,7 @@ void setup() {
 
 void loop() {
   // Wait until exactly 2000us have passed since the start of the last loop
-  while (esp_timer_get_time() - loop_time < (LOOP_CYCLE * 1e6))
+  while (esp_timer_get_time() - loop_time < (loop_cycle * 1e6))
     ;
 
   // Reset loop time
@@ -307,13 +308,13 @@ void loop() {
   mcpwm_set_duty_in_us(MCPWM_UNIT_0, MCPWM_TIMER_1, MCPWM_OPR_A, esc3);
   mcpwm_set_duty_in_us(MCPWM_UNIT_0, MCPWM_TIMER_1, MCPWM_OPR_B, esc4);
 
-  static uint8_t mag_read_counter = 0;
-  mag_read_counter++;
+  // static uint8_t mag_read_counter = 0;
+  // mag_read_counter++;
 
-  if (mag_read_counter >= 2) {
-    mag_read_counter = 0;
-    mag_signal();
-  }
+  // if (mag_read_counter >= 2) {
+  //   mag_read_counter = 0;
+  //   mag_signal();
+  // }
   // Visual warning: If execution takes more than 90% of our budget (1800us)
   // we turn on the LED to indicate a CPU bottleneck.
   digitalWrite(INTERNAL_LED_PIN, esp_timer_get_time() - loop_time > 2 * 1e3 * 0.9);

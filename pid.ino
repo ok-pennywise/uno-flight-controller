@@ -110,20 +110,20 @@ Stop when:
 void compute_angle_correction(float error, float p, float* output) {
   *output = p * error;
 
-  if (*output > PID_MAX_OP) *output = PID_MAX_OP;
-  if (*output < -PID_MAX_OP) *output = -PID_MAX_OP;
+  if (*output > pid_max_op) *output = pid_max_op;
+  if (*output < -pid_max_op) *output = -pid_max_op;
 }
 
 void compute_rate_correction(float error, float p, float i, float d, float* prev_error, float* prev_i_term, float rate, float* prev_rate, float* output) {
   float p_term = p * error;
 
-  float i_term = *prev_i_term + i * (error + *prev_error) * LOOP_CYCLE / 2.0f;
+  float i_term = *prev_i_term + i * (error + *prev_error) * loop_cycle / 2.0f;
 
-  if (i_term > PID_MAX_OP) i_term = PID_MAX_OP;
-  if (i_term < -PID_MAX_OP) i_term = -PID_MAX_OP;
+  if (i_term > pid_max_op) i_term = pid_max_op;
+  if (i_term < -pid_max_op) i_term = -pid_max_op;
 
   float rate_f = 0.7 * rate + 0.3 * (*prev_rate);
-  float d_term = -d * (rate_f - *prev_rate) / LOOP_CYCLE;
+  float d_term = -d * (rate_f - *prev_rate) / loop_cycle;
 
   *output = p_term + i_term + d_term;
 
@@ -131,8 +131,8 @@ void compute_rate_correction(float error, float p, float i, float d, float* prev
   *prev_i_term = i_term;
   *prev_rate = rate_f;
 
-  if (*output > PID_MAX_OP) *output = PID_MAX_OP;
-  if (*output < -PID_MAX_OP) *output = -PID_MAX_OP;
+  if (*output > pid_max_op) *output = pid_max_op;
+  if (*output < -pid_max_op) *output = -pid_max_op;
 }
 
 void command_corrections() {
@@ -145,8 +145,6 @@ void command_corrections() {
   adjusted_throttle = desired_throttle;
 
   if (adjusted_throttle > 1800) adjusted_throttle = 1800;
-
-  if (adjusted_throttle < 1050) reset_controller();
 
   if (mode == ANGLE_MODE) {
     error_roll_angle = desired_roll_angle - roll_angle;
