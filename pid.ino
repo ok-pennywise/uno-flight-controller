@@ -123,7 +123,9 @@ void compute_rate_correction(float error, float p, float i, float d, float* prev
   if (i_term < -pid_max_op) i_term = -pid_max_op;
 
   float rate_f = 0.7 * rate + 0.3 * (*prev_rate);
-  float d_term = -d * (rate_f - *prev_rate) / loop_cycle;
+  // float d_term = -d * (rate_f - *prev_rate) / loop_cycle;
+  float d_term = -d * (rate_f - *prev_rate);
+  // rate is already in °/s
 
   *output = p_term + i_term + d_term;
 

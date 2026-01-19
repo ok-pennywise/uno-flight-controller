@@ -67,6 +67,8 @@ float roll_angle_uncertainity = 4.0f, pitch_angle_uncertainity = 4.0f, yaw_angle
 float desired_roll_rate, desired_pitch_rate, desired_yaw_rate, desired_throttle;
 float desired_roll_angle, desired_pitch_angle, desired_yaw_angle;
 
+float desired_vx, desired_vy, desired_vz;
+
 float adjusted_roll_rate, adjusted_pitch_rate, adjusted_yaw_rate, adjusted_throttle;
 
 float error_roll_rate, error_pitch_rate, error_yaw_rate;
@@ -93,7 +95,7 @@ STATES state = UNARMED;
 // Modes
 enum FLIGHT_MODES { ANGLE_MODE,
                     ACRO_MODE,
-                    POS_HOLD_MODE };
+                    AUTO_PILOT };
 
 FLIGHT_MODES mode = ACRO_MODE;
 
@@ -164,9 +166,9 @@ void read_orientation() {
   gy = ((float)rgy * gyro_scale) - gyro_offsets[y];
   gz = ((float)rgz * gyro_scale) - gyro_offsets[z];
 
-  // mx = ((float)rmx - mag_offsets[x]) * mag_scales[x];
-  // my = ((float)rmy - mag_offsets[y]) * mag_scales[y];
-  // mz = ((float)rmz - mag_offsets[z]) * mag_scales[z];
+  mx = ((float)rmx - mag_offsets[x]) * mag_scales[x];
+  my = ((float)rmy - mag_offsets[y]) * mag_scales[y];
+  mz = ((float)rmz - mag_offsets[z]) * mag_scales[z];
 
   kalman_1d(&roll_angle, &roll_angle_uncertainity, gx, atan2f(ay, az) * RAD_TO_DEG);
   kalman_1d(&pitch_angle, &pitch_angle_uncertainity,
@@ -188,6 +190,7 @@ void read_orientation() {
 
   // yaw_angle = atan2f(my_horizintal, mx_horizintal) * RAD_TO_DEG;
   // yaw_angle += mag_declination;
+  // yaw_angle -= initial_yaw_angle;
 
   // if (yaw_angle < 0.0f) yaw_angle += 360.0f;
   // if (yaw_angle >= 360.0f) yaw_angle -= 360.0f;
