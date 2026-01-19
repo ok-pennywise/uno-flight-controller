@@ -123,9 +123,7 @@ void compute_rate_correction(float error, float p, float i, float d, float* prev
   if (i_term < -pid_max_op) i_term = -pid_max_op;
 
   float rate_f = 0.7 * rate + 0.3 * (*prev_rate);
-  // float d_term = -d * (rate_f - *prev_rate) / loop_cycle;
-  float d_term = -d * (rate_f - *prev_rate);
-  // rate is already in °/s
+  float d_term = -d * (rate_f - *prev_rate) / loop_cycle;
 
   *output = p_term + i_term + d_term;
 
@@ -164,6 +162,8 @@ void command_corrections() {
   compute_rate_correction(error_pitch_rate, p_pitch_rate, i_pitch_rate, d_pitch_rate, &prev_error_pitch_rate, &prev_iterm_pitch_rate, gy, &prev_gy, &adjusted_pitch_rate);
   compute_rate_correction(error_yaw_rate, p_yaw_rate, i_yaw_rate, d_yaw_rate, &prev_error_yaw_rate, &prev_iterm_yaw_rate, gz, &prev_gz, &adjusted_yaw_rate);
 
+  if (adjusted_throttle < 1050) reset_controller();
+
   esc1 = adjusted_throttle - adjusted_roll_rate - adjusted_pitch_rate - adjusted_yaw_rate;
   esc2 = adjusted_throttle - adjusted_roll_rate + adjusted_pitch_rate + adjusted_yaw_rate;
   esc3 = adjusted_throttle + adjusted_roll_rate + adjusted_pitch_rate - adjusted_yaw_rate;
@@ -191,11 +191,10 @@ void reset_controller() {
 
   desired_roll_angle = desired_pitch_angle = desired_yaw_angle = 0.0f;
   desired_roll_rate = desired_pitch_rate = desired_yaw_rate = 0.0f;
+  desired_vx = desired_vy = desired_vz = 0.0f;
 
   prev_gx = prev_gy = prev_gz = 0.0f;
   prev_ax = prev_ay = prev_az = 0.0f;
   prev_mx = prev_my = prev_mz = 0.0f;
   prev_vx = prev_vy = prev_vz = 0.0f;
-
-  prev_roll_angle = prev_pitch_angle = prev_yaw_angle = 0.0f;
 }

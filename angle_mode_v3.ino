@@ -45,6 +45,13 @@ int esc1, esc2, esc3, esc4;
 constexpr float accel_scale = 0.0002441;  // 1 / 4096 -> 7 digits
 constexpr float gyro_scale = 0.0152671;   // 1 / 65.5 -> 7 digits
 
+constexpr float p_roll_angle = 0.0f, p_pitch_angle = p_roll_angle, p_yaw_angle = 0.0f;
+
+constexpr float p_roll_rate = 0.8f, i_roll_rate = 0.0f, d_roll_rate = 0.0f;
+constexpr float p_pitch_rate = p_roll_rate, i_pitch_rate = i_roll_rate, d_pitch_rate = d_roll_rate;
+
+constexpr float p_yaw_rate = 4.0f, i_yaw_rate = 0.03f, d_yaw_rate = 0.0f;
+
 int16_t rgx, rgy, rgz, rax, ray, raz, rmx, rmy, rmz, rvx, rvy, rvz;
 float gx, gy, gz, ax, ay, az, mx, my, mz, vx, vy, vz;
 
@@ -53,16 +60,10 @@ float prev_gx, prev_gy, prev_gz, prev_ax, prev_ay, prev_az, prev_mx, prev_my, pr
 float gyro_offsets[3], accel_offsets[3];
 float mag_offsets[3], mag_scales[3];
 
-constexpr float p_roll_angle = 0.0f, p_pitch_angle = p_roll_angle, p_yaw_angle = 0.0f;
-
-constexpr float p_roll_rate = 0.8f, i_roll_rate = 0.0f, d_roll_rate = 0.0f;
-constexpr float p_pitch_rate = p_roll_rate, i_pitch_rate = i_roll_rate, d_pitch_rate = d_roll_rate;
-
-constexpr float p_yaw_rate = 4.0f, i_yaw_rate = 0.03f, d_yaw_rate = 0.0f;
-
 float roll_angle, pitch_angle, yaw_angle;
-float prev_roll_angle, prev_pitch_angle, prev_yaw_angle;
 float roll_angle_uncertainity = 4.0f, pitch_angle_uncertainity = 4.0f, yaw_angle_uncertainity = 4.0f;
+
+float accel_due_to_gravity;
 
 float desired_roll_rate, desired_pitch_rate, desired_yaw_rate, desired_throttle;
 float desired_roll_angle, desired_pitch_angle, desired_yaw_angle;
@@ -81,6 +82,7 @@ float prev_iterm_roll_rate, prev_iterm_pitch_rate, prev_iterm_yaw_rate;
 float prev_iterm_roll_angle, prev_iterm_pitch_angle, prev_iterm_yaw_angle;
 
 constexpr float mag_declination = -0.25f;
+uint8_t mag_read_counter;
 
 int64_t loop_time;
 
@@ -100,18 +102,16 @@ enum FLIGHT_MODES { ANGLE_MODE,
 FLIGHT_MODES mode = ACRO_MODE;
 
 void IRAM_ATTR radio_ppm_isr() {
+  portENTER_CRITICAL_ISR(&mux);
+
   int64_t current_time = esp_timer_get_time();
   uint16_t us = (uint16_t)(current_time - ppm_last_rise_time);
   ppm_last_rise_time = current_time;
 
-  if (us > 3000) {
-    channel_index = 0;
-  } else {
-    if (channel_index < RC_CH_COUNT) {
-      radio[channel_index] = us;
-      channel_index++;
-    }
-  }
+  if (us > 3000) channel_index = 0;
+  else if (channel_index < RC_CH_COUNT) radio[channel_index++] = us;
+
+  portEXIT_CRITICAL_ISR(&mux);
 }
 
 void read_radio() {
@@ -175,27 +175,37 @@ void read_orientation() {
             gy,
             atan2f(-ax, sqrtf(ay * ay + az * az)) * RAD_TO_DEG);
 
-  prev_roll_angle = roll_angle;
-  prev_pitch_angle = pitch_angle;
+  if (mag_read_counter < 2) return;
+  mag_read_counter = 0;
 
-  // float cr = cosf(roll_angle * DEG_TO_RAD);
-  // float sr = sinf(roll_angle * DEG_TO_RAD);
+  float cr = cosf(roll_angle * DEG_TO_RAD);
+  float sr = sinf(roll_angle * DEG_TO_RAD);
 
-  // float cp = cosf(pitch_angle * DEG_TO_RAD);
-  // float sp = sinf(pitch_angle * DEG_TO_RAD);
+  float cp = cosf(pitch_angle * DEG_TO_RAD);
+  float sp = sinf(pitch_angle * DEG_TO_RAD);
 
-  // // // Project magnetometer readings onto the horizontal plane
-  // float mx_horizintal = mx * cp + mz * sp;
-  // float my_horizintal = mx * sr * sp + my * cr - mz * sr * cp;
+  // // Project magnetometer readings onto the horizontal plane
+  float mx_horizintal = mx * cp + mz * sp;
+  float my_horizintal = mx * sr * sp + my * cr - mz * sr * cp;
 
-  // yaw_angle = atan2f(my_horizintal, mx_horizintal) * RAD_TO_DEG;
-  // yaw_angle += mag_declination;
-  // yaw_angle -= initial_yaw_angle;
+  float heading = atan2f(my_horizintal, mx_horizintal) * RAD_TO_DEG;
 
-  // if (yaw_angle < 0.0f) yaw_angle += 360.0f;
-  // if (yaw_angle >= 360.0f) yaw_angle -= 360.0f;
+  if (heading < 0.0f) heading += 360.0f;
 
-  // prev_yaw_angle = yaw_angle;
+  yaw_angle += gz * loop_cycle;
+
+  float error = heading - yaw_angle;
+
+  if (error > 180.0f) error -= 360.0f;
+  if (error < -180.0f) error += 360.0f;
+
+  constexpr float alpha = 0.7;
+  yaw_angle += (1 - alpha) * error;
+
+  if (yaw_angle < 0.0f) yaw_angle += 360.0f;
+  if (yaw_angle > 360.0f) yaw_angle -= 360.0f;
+
+  yaw_angle += mag_declination;
 }
 
 void toggle_mode() {
@@ -257,7 +267,7 @@ void translate_flight_mode() {
 }
 
 void setup() {
-  // Serial.begin(115200);
+  Serial.begin(115200);
   Wire.begin(SDA_PIN, SCL_PIN);
   Wire.setClock(400000);
 
@@ -280,7 +290,12 @@ void setup() {
   delay(2000);
 
   initialize_imu();
-  // initialize_mag();
+  initialize_mag();
+
+  imu_signal();
+  read_orientation();
+
+  accel_due_to_gravity = sqrtf(ax * ax + ay * ay + az * az);
 
   attachInterrupt(digitalPinToInterrupt(PPM_PIN), radio_ppm_isr, RISING);
   loop_time = esp_timer_get_time();
@@ -297,9 +312,11 @@ void loop() {
 
   imu_signal();
 
-  read_radio();             // Get latest RC pulses
-  update_arm_state();       // Safety and arming logic
-  toggle_mode();            // Check flight mode switch
+  read_radio();  // Get latest RC pulses
+
+  update_arm_state();  // Safety and arming logic
+  toggle_mode();       // Check flight mode switch
+
   translate_flight_mode();  // Convert RC to setpoints
 
   read_orientation();     // Kalman filter / AHRS
@@ -311,14 +328,11 @@ void loop() {
   mcpwm_set_duty_in_us(MCPWM_UNIT_0, MCPWM_TIMER_1, MCPWM_OPR_A, esc3);
   mcpwm_set_duty_in_us(MCPWM_UNIT_0, MCPWM_TIMER_1, MCPWM_OPR_B, esc4);
 
-  // static uint8_t mag_read_counter = 0;
-  // mag_read_counter++;
+  mag_read_counter++;
+  if (mag_read_counter >= 2) mag_signal();
 
-  // if (mag_read_counter >= 2) {
-  //   mag_read_counter = 0;
-  //   mag_signal();
-  // }
   // Visual warning: If execution takes more than 90% of our budget (1800us)
   // we turn on the LED to indicate a CPU bottleneck.
   digitalWrite(INTERNAL_LED_PIN, esp_timer_get_time() - loop_time > 2 * 1e3 * 0.9);
+  Serial.println(yaw_angle);
 }
