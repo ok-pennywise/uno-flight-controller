@@ -267,7 +267,7 @@ void translate_flight_mode() {
 }
 
 void setup() {
-  Serial.begin(115200);
+  // Serial.begin(115200);
   Wire.begin(SDA_PIN, SCL_PIN);
   Wire.setClock(400000);
 
@@ -334,5 +334,4 @@ void loop() {
   // Visual warning: If execution takes more than 90% of our budget (1800us)
   // we turn on the LED to indicate a CPU bottleneck.
   digitalWrite(INTERNAL_LED_PIN, esp_timer_get_time() - loop_time > 2 * 1e3 * 0.9);
-  Serial.println(yaw_angle);
 }
