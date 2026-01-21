@@ -47,15 +47,21 @@ constexpr float gyro_scale = 0.0152671;   // 1 / 65.5 -> 7 digits
 
 constexpr float p_roll_angle = 0.0f, p_pitch_angle = p_roll_angle, p_yaw_angle = 0.0f;
 
-constexpr float p_roll_rate = 0.65f, i_roll_rate = 0.0f, d_roll_rate = 0.004f;
+// P rate is stable at 0.65 - Do not change
+// D rate is stable at 0.008
+// I rate is stable at 0.07
+
+// Rate PID is stable - Do not change
+constexpr float p_roll_rate = 0.65f, i_roll_rate = 0.07f, d_roll_rate = 0.008f;
 constexpr float p_pitch_rate = p_roll_rate, i_pitch_rate = i_roll_rate, d_pitch_rate = d_roll_rate;
 
-constexpr float p_yaw_rate = 4.0f, i_yaw_rate = 0.5f, d_yaw_rate = 0.0f;
+constexpr float p_yaw_rate = 4.0f, i_yaw_rate = 3.0f, d_yaw_rate = 0.0f;
 
 int16_t rgx, rgy, rgz, rax, ray, raz, rmx, rmy, rmz, rvx, rvy, rvz;
 float gx, gy, gz, ax, ay, az, mx, my, mz, vx, vy, vz;
 
-float prev_gx, prev_gy, prev_gz, prev_ax, prev_ay, prev_az, prev_mx, prev_my, prev_mz, prev_vx, prev_vy, prev_vz;
+// Track of rates are necessary
+float prev_gx, prev_gy, prev_gz, prev_vx, prev_vy, prev_vz;
 
 float gyro_offsets[3], accel_offsets[3];
 float mag_offsets[3], mag_scales[3];
@@ -99,7 +105,7 @@ enum FLIGHT_MODES { ANGLE_MODE,
                     ACRO_MODE,
                     AUTO_PILOT };
 
-FLIGHT_MODES mode = ACRO_MODE;
+FLIGHT_MODES mode = ANGLE_MODE;
 
 void IRAM_ATTR radio_ppm_isr() {
   int64_t current_time = esp_timer_get_time();
@@ -122,7 +128,7 @@ void read_radio() {
     if (pulse > 2000.0f) pulse = 2000.0f;
     if (pulse < 1000.0f) pulse = 1000.0f;
 
-    if (i != CH3 && pulse > 1490.0f && pulse < 1510.0f) pulse = 1500.0f;
+    // if (i != CH3 && pulse > 1490.0f && pulse < 1510.0f) pulse = 1500.0f;
     radio_filtered[i] = pulse;
   }
 }
@@ -144,15 +150,6 @@ void initialize_mcpwm() {
   mcpwm_init(MCPWM_UNIT_0, MCPWM_TIMER_1, &pwm_config);  // Timer 1 handles ESC3 & 4
 }
 
-// void kalman_1d(float KalmanState, float KalmanUncertainty, float KalmanInput, float KalmanMeasurement) {
-//   KalmanState = KalmanState + (t * KalmanInput);
-//   KalmanUncertainty = KalmanUncertainty + (t * t * 4 * 4);  //here 4 is the vairnece of IMU i.e 4 deg/s
-
-//   float KalmanGain = KalmanUncertainty * 1 / (1 * KalmanUncertainty + 3 * 3);  //std deviation of error is 3 deg
-//   KalmanState = KalmanState + KalmanGain * (KalmanMeasurement - KalmanState);
-//   KalmanUncertainty = (1 - KalmanGain) * KalmanUncertainty;
-// }
-
 void kalman_1d(float* state, float* uncertainty, float rate, float angle) {
   *state += rate * loop_cycle;
   *uncertainty += loop_cycle * loop_cycle * 16.0f;  // gyro variance (4 deg/s)^2
@@ -166,8 +163,6 @@ void read_orientation() {
   ax = ((float)rax * accel_scale) - accel_offsets[x];
   ay = ((float)ray * accel_scale) - accel_offsets[y];
   az = ((float)raz * accel_scale) - accel_offsets[z];
-
-  // constexpr float alpha = 0.97;
 
   gx = ((float)rgx * gyro_scale) - gyro_offsets[x];
   gy = ((float)rgy * gyro_scale) - gyro_offsets[y];
@@ -216,8 +211,9 @@ void read_orientation() {
 
 void toggle_mode() {
   if (radio_filtered[CH3] > 1200) return;
-  else if (radio_filtered[CH6] < 1300) mode = ACRO_MODE;
-  else if (radio_filtered[CH6] > 1700) mode = ANGLE_MODE;
+  else if (radio_filtered[CH6] < 1300) mode = ANGLE_MODE;
+  else if (radio_filtered[CH6] < 1700 && radio_filtered[CH6] > 1300) mode = AUTO_PILOT;
+  else if (radio_filtered[CH6] > 1700) mode = ACRO_MODE;
 }
 
 void update_arm_state() {
@@ -267,6 +263,10 @@ void translate_flight_mode() {
       desired_yaw_rate =
         100.0f * ((radio_filtered[CH4] - 1500.0f) / 500.0f);  // 100°/s
       break;
+
+    case AUTO_PILOT:
+      // Unimplemented
+      break;
   }
   desired_throttle =
     radio_filtered[CH3];
@@ -303,7 +303,6 @@ void setup() {
 }
 
 void loop() {
-  // int64_t t = esp_timer_get_time();
   // Wait until exactly 2000us have passed since the start of the last loop
   while (esp_timer_get_time() - loop_time < (loop_cycle * 1e6))
     ;

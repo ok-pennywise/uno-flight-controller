@@ -195,7 +195,5 @@ void reset_controller() {
   desired_vx = desired_vy = desired_vz = 0.0f;
 
   prev_gx = prev_gy = prev_gz = 0.0f;
-  prev_ax = prev_ay = prev_az = 0.0f;
-  prev_mx = prev_my = prev_mz = 0.0f;
   prev_vx = prev_vy = prev_vz = 0.0f;
 }
