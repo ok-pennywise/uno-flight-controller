@@ -47,10 +47,10 @@ constexpr float gyro_scale = 0.0152671;   // 1 / 65.5 -> 7 digits
 
 constexpr float p_roll_angle = 0.0f, p_pitch_angle = p_roll_angle, p_yaw_angle = 0.0f;
 
-constexpr float p_roll_rate = 0.8f, i_roll_rate = 0.0f, d_roll_rate = 0.0f;
+constexpr float p_roll_rate = 0.65f, i_roll_rate = 0.0f, d_roll_rate = 0.004f;
 constexpr float p_pitch_rate = p_roll_rate, i_pitch_rate = i_roll_rate, d_pitch_rate = d_roll_rate;
 
-constexpr float p_yaw_rate = 4.0f, i_yaw_rate = 0.03f, d_yaw_rate = 0.0f;
+constexpr float p_yaw_rate = 4.0f, i_yaw_rate = 0.5f, d_yaw_rate = 0.0f;
 
 int16_t rgx, rgy, rgz, rax, ray, raz, rmx, rmy, rmz, rvx, rvy, rvz;
 float gx, gy, gz, ax, ay, az, mx, my, mz, vx, vy, vz;
@@ -102,16 +102,12 @@ enum FLIGHT_MODES { ANGLE_MODE,
 FLIGHT_MODES mode = ACRO_MODE;
 
 void IRAM_ATTR radio_ppm_isr() {
-  portENTER_CRITICAL_ISR(&mux);
-
   int64_t current_time = esp_timer_get_time();
   uint16_t us = (uint16_t)(current_time - ppm_last_rise_time);
   ppm_last_rise_time = current_time;
 
   if (us > 3000) channel_index = 0;
   else if (channel_index < RC_CH_COUNT) radio[channel_index++] = us;
-
-  portEXIT_CRITICAL_ISR(&mux);
 }
 
 void read_radio() {
@@ -148,6 +144,15 @@ void initialize_mcpwm() {
   mcpwm_init(MCPWM_UNIT_0, MCPWM_TIMER_1, &pwm_config);  // Timer 1 handles ESC3 & 4
 }
 
+// void kalman_1d(float KalmanState, float KalmanUncertainty, float KalmanInput, float KalmanMeasurement) {
+//   KalmanState = KalmanState + (t * KalmanInput);
+//   KalmanUncertainty = KalmanUncertainty + (t * t * 4 * 4);  //here 4 is the vairnece of IMU i.e 4 deg/s
+
+//   float KalmanGain = KalmanUncertainty * 1 / (1 * KalmanUncertainty + 3 * 3);  //std deviation of error is 3 deg
+//   KalmanState = KalmanState + KalmanGain * (KalmanMeasurement - KalmanState);
+//   KalmanUncertainty = (1 - KalmanGain) * KalmanUncertainty;
+// }
+
 void kalman_1d(float* state, float* uncertainty, float rate, float angle) {
   *state += rate * loop_cycle;
   *uncertainty += loop_cycle * loop_cycle * 16.0f;  // gyro variance (4 deg/s)^2
@@ -162,50 +167,51 @@ void read_orientation() {
   ay = ((float)ray * accel_scale) - accel_offsets[y];
   az = ((float)raz * accel_scale) - accel_offsets[z];
 
+  // constexpr float alpha = 0.97;
+
   gx = ((float)rgx * gyro_scale) - gyro_offsets[x];
   gy = ((float)rgy * gyro_scale) - gyro_offsets[y];
   gz = ((float)rgz * gyro_scale) - gyro_offsets[z];
 
-  mx = ((float)rmx - mag_offsets[x]) * mag_scales[x];
-  my = ((float)rmy - mag_offsets[y]) * mag_scales[y];
-  mz = ((float)rmz - mag_offsets[z]) * mag_scales[z];
+  // mx = ((float)rmx - mag_offsets[x]) * mag_scales[x];
+  // my = ((float)rmy - mag_offsets[y]) * mag_scales[y];
+  // mz = ((float)rmz - mag_offsets[z]) * mag_scales[z];
 
   kalman_1d(&roll_angle, &roll_angle_uncertainity, gx, atan2f(ay, az) * RAD_TO_DEG);
   kalman_1d(&pitch_angle, &pitch_angle_uncertainity,
             gy,
             atan2f(-ax, sqrtf(ay * ay + az * az)) * RAD_TO_DEG);
 
-  if (mag_read_counter < 2) return;
-  mag_read_counter = 0;
+  // if (mag_read_counter < 2) return;
+  // mag_read_counter = 0;
 
-  float cr = cosf(roll_angle * DEG_TO_RAD);
-  float sr = sinf(roll_angle * DEG_TO_RAD);
+  // float cr = cosf(roll_angle * DEG_TO_RAD);
+  // float sr = sinf(roll_angle * DEG_TO_RAD);
 
-  float cp = cosf(pitch_angle * DEG_TO_RAD);
-  float sp = sinf(pitch_angle * DEG_TO_RAD);
+  // float cp = cosf(pitch_angle * DEG_TO_RAD);
+  // float sp = sinf(pitch_angle * DEG_TO_RAD);
 
-  // // Project magnetometer readings onto the horizontal plane
-  float mx_horizintal = mx * cp + mz * sp;
-  float my_horizintal = mx * sr * sp + my * cr - mz * sr * cp;
+  // // // Project magnetometer readings onto the horizontal plane
+  // float mx_horizintal = mx * cp + mz * sp;
+  // float my_horizintal = mx * sr * sp + my * cr - mz * sr * cp;
 
-  float heading = atan2f(my_horizintal, mx_horizintal) * RAD_TO_DEG;
+  // float heading = atan2f(my_horizintal, mx_horizintal) * RAD_TO_DEG;
 
-  if (heading < 0.0f) heading += 360.0f;
+  // if (heading < 0.0f) heading += 360.0f;
 
-  yaw_angle += gz * loop_cycle;
+  // yaw_angle += gz * loop_cycle;
 
-  float error = heading - yaw_angle;
+  // float error = heading - yaw_angle;
 
-  if (error > 180.0f) error -= 360.0f;
-  if (error < -180.0f) error += 360.0f;
+  // if (error > 180.0f) error -= 360.0f;
+  // if (error < -180.0f) error += 360.0f;
 
-  constexpr float alpha = 0.7;
-  yaw_angle += (1 - alpha) * error;
+  // yaw_angle += 0.3 * error;
 
-  if (yaw_angle < 0.0f) yaw_angle += 360.0f;
-  if (yaw_angle > 360.0f) yaw_angle -= 360.0f;
+  // if (yaw_angle < 0.0f) yaw_angle += 360.0f;
+  // if (yaw_angle > 360.0f) yaw_angle -= 360.0f;
 
-  yaw_angle += mag_declination;
+  // yaw_angle += mag_declination;
 }
 
 void toggle_mode() {
@@ -290,12 +296,6 @@ void setup() {
   delay(2000);
 
   initialize_imu();
-  initialize_mag();
-
-  imu_signal();
-  read_orientation();
-
-  accel_due_to_gravity = sqrtf(ax * ax + ay * ay + az * az);
 
   attachInterrupt(digitalPinToInterrupt(PPM_PIN), radio_ppm_isr, RISING);
   loop_time = esp_timer_get_time();
@@ -303,6 +303,7 @@ void setup() {
 }
 
 void loop() {
+  // int64_t t = esp_timer_get_time();
   // Wait until exactly 2000us have passed since the start of the last loop
   while (esp_timer_get_time() - loop_time < (loop_cycle * 1e6))
     ;
@@ -328,10 +329,11 @@ void loop() {
   mcpwm_set_duty_in_us(MCPWM_UNIT_0, MCPWM_TIMER_1, MCPWM_OPR_A, esc3);
   mcpwm_set_duty_in_us(MCPWM_UNIT_0, MCPWM_TIMER_1, MCPWM_OPR_B, esc4);
 
-  mag_read_counter++;
-  if (mag_read_counter >= 2) mag_signal();
+  // mag_read_counter++;
+  // if (mag_read_counter >= 2) mag_signal();
 
   // Visual warning: If execution takes more than 90% of our budget (1800us)
   // we turn on the LED to indicate a CPU bottleneck.
   digitalWrite(INTERNAL_LED_PIN, esp_timer_get_time() - loop_time > 2 * 1e3 * 0.9);
+  // Serial.println(esp_timer_get_time() - loop_time);
 }

@@ -6,7 +6,7 @@ void initialize_imu() {
 
   Wire.beginTransmission(IMU_ADDR);
   Wire.write(0x1A);
-  Wire.write(0x03);
+  Wire.write(0x05); // 0x05 -> 10Hz - Tried 0x03 -> 44Hz and the vibration caused it to go haywire
   Wire.endTransmission();
 
   Wire.beginTransmission(IMU_ADDR);
