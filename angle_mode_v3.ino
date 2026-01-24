@@ -55,7 +55,7 @@ constexpr float p_roll_angle = 0.0f, p_pitch_angle = p_roll_angle, p_yaw_angle =
 constexpr float p_roll_rate = 0.65f, i_roll_rate = 0.07f, d_roll_rate = 0.008f;
 constexpr float p_pitch_rate = p_roll_rate, i_pitch_rate = i_roll_rate, d_pitch_rate = d_roll_rate;
 
-constexpr float p_yaw_rate = 4.0f, i_yaw_rate = 3.0f, d_yaw_rate = 0.0f;
+constexpr float p_yaw_rate = 1.5f, i_yaw_rate = 3.0f, d_yaw_rate = 0.0f;
 
 int16_t rgx, rgy, rgz, rax, ray, raz, rmx, rmy, rmz, rvx, rvy, rvz;
 float gx, gy, gz, ax, ay, az, mx, my, mz, vx, vy, vz;
@@ -102,10 +102,9 @@ STATES state = UNARMED;
 
 // Modes
 enum FLIGHT_MODES { ANGLE_MODE,
-                    ACRO_MODE,
-                    AUTO_PILOT };
+                    ACRO_MODE };
 
-FLIGHT_MODES mode = ANGLE_MODE;
+FLIGHT_MODES mode = ACRO_MODE;
 
 void IRAM_ATTR radio_ppm_isr() {
   int64_t current_time = esp_timer_get_time();
@@ -128,7 +127,7 @@ void read_radio() {
     if (pulse > 2000.0f) pulse = 2000.0f;
     if (pulse < 1000.0f) pulse = 1000.0f;
 
-    // if (i != CH3 && pulse > 1490.0f && pulse < 1510.0f) pulse = 1500.0f;
+    if (i != CH3 && pulse > 1490.0f && pulse < 1510.0f) pulse = 1500.0f;
     radio_filtered[i] = pulse;
   }
 }
@@ -163,6 +162,14 @@ void read_orientation() {
   ax = ((float)rax * accel_scale) - accel_offsets[x];
   ay = ((float)ray * accel_scale) - accel_offsets[y];
   az = ((float)raz * accel_scale) - accel_offsets[z];
+
+  // constexpr float alpha = 0.7;
+
+  // gx = alpha * gx + (1 - alpha) * (((float)rgx * gyro_scale) - gyro_offsets[x]);
+  // gy = alpha * gy + (1 - alpha) * (((float)rgy * gyro_scale) - gyro_offsets[y]);
+  // gz = alpha * gz + (1 - alpha) * (((float)rgz * gyro_scale) - gyro_offsets[z]);
+
+  // Use this expersion and set DLPF to 0x03 from 0x05
 
   gx = ((float)rgx * gyro_scale) - gyro_offsets[x];
   gy = ((float)rgy * gyro_scale) - gyro_offsets[y];
@@ -211,9 +218,11 @@ void read_orientation() {
 
 void toggle_mode() {
   if (radio_filtered[CH3] > 1200) return;
-  else if (radio_filtered[CH6] < 1300) mode = ANGLE_MODE;
-  else if (radio_filtered[CH6] < 1700 && radio_filtered[CH6] > 1300) mode = AUTO_PILOT;
-  else if (radio_filtered[CH6] > 1700) mode = ACRO_MODE;
+  if (roll_angle > 10.0f || roll_angle < -10.0f || pitch_angle > 10.0f || pitch_angle < -10.0f) return;
+
+  else if (radio_filtered[CH6] < 1300) mode = ACRO_MODE;
+  // else if (radio_filtered[CH6] < 1700 && radio_filtered[CH6] > 1300) mode = AUTO_PILOT;
+  else if (radio_filtered[CH6] > 1700) mode = ANGLE_MODE;
 }
 
 void update_arm_state() {
@@ -263,10 +272,6 @@ void translate_flight_mode() {
       desired_yaw_rate =
         100.0f * ((radio_filtered[CH4] - 1500.0f) / 500.0f);  // 100°/s
       break;
-
-    case AUTO_PILOT:
-      // Unimplemented
-      break;
   }
   desired_throttle =
     radio_filtered[CH3];
@@ -284,7 +289,7 @@ void setup() {
 
   initialize_mcpwm();
   delay(100);
-
+  // Arm the ESCs
   for (int i = 0; i < 100; i++) {
     mcpwm_set_duty_in_us(MCPWM_UNIT_0, MCPWM_TIMER_0, MCPWM_OPR_A, 1000);
     mcpwm_set_duty_in_us(MCPWM_UNIT_0, MCPWM_TIMER_0, MCPWM_OPR_B, 1000);
@@ -296,6 +301,7 @@ void setup() {
   delay(2000);
 
   initialize_imu();
+  // initialize_mag();
 
   attachInterrupt(digitalPinToInterrupt(PPM_PIN), radio_ppm_isr, RISING);
   loop_time = esp_timer_get_time();
@@ -310,17 +316,15 @@ void loop() {
   // Reset loop time
   loop_time = esp_timer_get_time();
 
-  imu_signal();
+  imu_signal();  // Read IMU
 
-  read_radio();  // Get latest RC pulses
-
+  read_radio();        // Get latest RC pulses
   update_arm_state();  // Safety and arming logic
   toggle_mode();       // Check flight mode switch
 
   translate_flight_mode();  // Convert RC to setpoints
-
-  read_orientation();     // Kalman filter / AHRS
-  command_corrections();  // Run PID controllers
+  read_orientation();       // Kalman filter / AHRS
+  command_corrections();    // Run PID controllers
 
   // Write to motors
   mcpwm_set_duty_in_us(MCPWM_UNIT_0, MCPWM_TIMER_0, MCPWM_OPR_A, esc1);
@@ -329,10 +333,9 @@ void loop() {
   mcpwm_set_duty_in_us(MCPWM_UNIT_0, MCPWM_TIMER_1, MCPWM_OPR_B, esc4);
 
   // mag_read_counter++;
-  // if (mag_read_counter >= 2) mag_signal();
+  // if (mag_read_counter >= 2) mag_signal();  // Read Mag
 
   // Visual warning: If execution takes more than 90% of our budget (1800us)
   // we turn on the LED to indicate a CPU bottleneck.
   digitalWrite(INTERNAL_LED_PIN, esp_timer_get_time() - loop_time > 2 * 1e3 * 0.9);
-  // Serial.println(esp_timer_get_time() - loop_time);
 }
