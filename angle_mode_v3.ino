@@ -33,9 +33,9 @@ volatile int64_t ppm_last_rise_time;
 portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
 
 #define ESC1_PIN 25
-#define ESC2_PIN 26
+#define ESC2_PIN 14
 #define ESC3_PIN 27
-#define ESC4_PIN 14
+#define ESC4_PIN 26
 
 int esc1, esc2, esc3, esc4;
 
@@ -60,7 +60,7 @@ constexpr float p_yaw_rate = 1.5f, i_yaw_rate = 3.0f, d_yaw_rate = 0.0f;
 int16_t rgx, rgy, rgz, rax, ray, raz, rmx, rmy, rmz, rvx, rvy, rvz;
 float gx, gy, gz, ax, ay, az, mx, my, mz, vx, vy, vz;
 
-// Track of rates are necessary
+// Tracking rates are necessary
 float prev_gx, prev_gy, prev_gz, prev_vx, prev_vy, prev_vz;
 
 float gyro_offsets[3], accel_offsets[3];
@@ -175,45 +175,10 @@ void read_orientation() {
   gy = ((float)rgy * gyro_scale) - gyro_offsets[y];
   gz = ((float)rgz * gyro_scale) - gyro_offsets[z];
 
-  // mx = ((float)rmx - mag_offsets[x]) * mag_scales[x];
-  // my = ((float)rmy - mag_offsets[y]) * mag_scales[y];
-  // mz = ((float)rmz - mag_offsets[z]) * mag_scales[z];
-
   kalman_1d(&roll_angle, &roll_angle_uncertainity, gx, atan2f(ay, az) * RAD_TO_DEG);
   kalman_1d(&pitch_angle, &pitch_angle_uncertainity,
             gy,
             atan2f(-ax, sqrtf(ay * ay + az * az)) * RAD_TO_DEG);
-
-  // if (mag_read_counter < 2) return;
-  // mag_read_counter = 0;
-
-  // float cr = cosf(roll_angle * DEG_TO_RAD);
-  // float sr = sinf(roll_angle * DEG_TO_RAD);
-
-  // float cp = cosf(pitch_angle * DEG_TO_RAD);
-  // float sp = sinf(pitch_angle * DEG_TO_RAD);
-
-  // // // Project magnetometer readings onto the horizontal plane
-  // float mx_horizintal = mx * cp + mz * sp;
-  // float my_horizintal = mx * sr * sp + my * cr - mz * sr * cp;
-
-  // float heading = atan2f(my_horizintal, mx_horizintal) * RAD_TO_DEG;
-
-  // if (heading < 0.0f) heading += 360.0f;
-
-  // yaw_angle += gz * loop_cycle;
-
-  // float error = heading - yaw_angle;
-
-  // if (error > 180.0f) error -= 360.0f;
-  // if (error < -180.0f) error += 360.0f;
-
-  // yaw_angle += 0.3 * error;
-
-  // if (yaw_angle < 0.0f) yaw_angle += 360.0f;
-  // if (yaw_angle > 360.0f) yaw_angle -= 360.0f;
-
-  // yaw_angle += mag_declination;
 }
 
 void toggle_mode() {
@@ -301,7 +266,6 @@ void setup() {
   delay(2000);
 
   initialize_imu();
-  // initialize_mag();
 
   attachInterrupt(digitalPinToInterrupt(PPM_PIN), radio_ppm_isr, RISING);
   loop_time = esp_timer_get_time();
@@ -309,7 +273,7 @@ void setup() {
 }
 
 void loop() {
-  // Wait until exactly 2000us have passed since the start of the last loop
+  // Wait until exactly loop_time have passed since the start of the last loop
   while (esp_timer_get_time() - loop_time < (loop_cycle * 1e6))
     ;
 
@@ -324,7 +288,9 @@ void loop() {
 
   translate_flight_mode();  // Convert RC to setpoints
   read_orientation();       // Kalman filter / AHRS
-  command_corrections();    // Run PID controllers
+
+  if (state == ARMED) command_corrections();  // Run PID controllers
+  else reset_controller();
 
   // Write to motors
   mcpwm_set_duty_in_us(MCPWM_UNIT_0, MCPWM_TIMER_0, MCPWM_OPR_A, esc1);
@@ -332,10 +298,7 @@ void loop() {
   mcpwm_set_duty_in_us(MCPWM_UNIT_0, MCPWM_TIMER_1, MCPWM_OPR_A, esc3);
   mcpwm_set_duty_in_us(MCPWM_UNIT_0, MCPWM_TIMER_1, MCPWM_OPR_B, esc4);
 
-  // mag_read_counter++;
-  // if (mag_read_counter >= 2) mag_signal();  // Read Mag
-
   // Visual warning: If execution takes more than 90% of our budget (1800us)
   // we turn on the LED to indicate a CPU bottleneck.
-  digitalWrite(INTERNAL_LED_PIN, esp_timer_get_time() - loop_time > 2 * 1e3 * 0.9);
+  digitalWrite(INTERNAL_LED_PIN, esp_timer_get_time() - loop_time > loop_cycle * 1e6 * 0.9);
 }
