@@ -14,6 +14,8 @@
 #define IMU_ADDR 0x68
 #define MAG_ADDR 0x2C
 
+#define DLPF_CONFIG 0x05
+
 constexpr float loop_cycle = 0.002f;
 constexpr uint8_t pid_max_op = 400;
 
@@ -84,8 +86,8 @@ float error_roll_angle, error_pitch_angle, error_yaw_angle;
 float prev_error_roll_rate, prev_error_pitch_rate, prev_error_yaw_rate;
 float prev_error_roll_angle, prev_error_pitch_angle, prev_error_yaw_angle;
 
-float prev_iterm_roll_rate, prev_iterm_pitch_rate, prev_iterm_yaw_rate;
-float prev_iterm_roll_angle, prev_iterm_pitch_angle, prev_iterm_yaw_angle;
+float prev_i_term_roll_rate, prev_i_term_pitch_rate, prev_i_term_yaw_rate;
+float prev_i_term_roll_angle, prev_i_term_pitch_angle, prev_i_term_yaw_angle;
 
 constexpr float mag_declination = -0.25f;
 uint8_t mag_read_counter;
@@ -163,17 +165,19 @@ void read_orientation() {
   ay = ((float)ray * accel_scale) - accel_offsets[y];
   az = ((float)raz * accel_scale) - accel_offsets[z];
 
-  // constexpr float alpha = 0.7;
+  if (DLPF_CONFIG == 0x03) {
+    constexpr float alpha = 0.7;
 
-  // gx = alpha * gx + (1 - alpha) * (((float)rgx * gyro_scale) - gyro_offsets[x]);
-  // gy = alpha * gy + (1 - alpha) * (((float)rgy * gyro_scale) - gyro_offsets[y]);
-  // gz = alpha * gz + (1 - alpha) * (((float)rgz * gyro_scale) - gyro_offsets[z]);
+    gx = alpha * gx + (1 - alpha) * (((float)rgx * gyro_scale) - gyro_offsets[x]);
+    gy = alpha * gy + (1 - alpha) * (((float)rgy * gyro_scale) - gyro_offsets[y]);
+    gz = alpha * gz + (1 - alpha) * (((float)rgz * gyro_scale) - gyro_offsets[z]);
 
-  // Use this expersion and set DLPF to 0x03 from 0x05
-
-  gx = ((float)rgx * gyro_scale) - gyro_offsets[x];
-  gy = ((float)rgy * gyro_scale) - gyro_offsets[y];
-  gz = ((float)rgz * gyro_scale) - gyro_offsets[z];
+    // Use this expersion and set DLPF to 0x03 from 0x05
+  } else if (DLPF_CONFIG == 0x05) {
+    gx = ((float)rgx * gyro_scale) - gyro_offsets[x];
+    gy = ((float)rgy * gyro_scale) - gyro_offsets[y];
+    gz = ((float)rgz * gyro_scale) - gyro_offsets[z];
+  }
 
   kalman_1d(&roll_angle, &roll_angle_uncertainity, gx, atan2f(ay, az) * RAD_TO_DEG);
   kalman_1d(&pitch_angle, &pitch_angle_uncertainity,
@@ -182,16 +186,13 @@ void read_orientation() {
 }
 
 void toggle_mode() {
-  if (radio_filtered[CH3] > 1200) return;
   if (roll_angle > 10.0f || roll_angle < -10.0f || pitch_angle > 10.0f || pitch_angle < -10.0f) return;
 
   else if (radio_filtered[CH6] < 1300) mode = ACRO_MODE;
-  // else if (radio_filtered[CH6] < 1700 && radio_filtered[CH6] > 1300) mode = AUTO_PILOT;
   else if (radio_filtered[CH6] > 1700) mode = ANGLE_MODE;
 }
 
 void update_arm_state() {
-  // When switch is down, we clear all errors and stay UNARMED
   if (radio_filtered[CH5] < 1300) {
     state = UNARMED;
     return;

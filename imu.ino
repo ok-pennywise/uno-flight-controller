@@ -6,8 +6,8 @@ void initialize_imu() {
 
   Wire.beginTransmission(IMU_ADDR);
   Wire.write(0x1A);
-  Wire.write(0x05); // 0x05 -> 10Hz - Tried 0x03 -> 44Hz and the vibration caused it to go haywire
-  // Next step use 0x03 and filter gx gy gz 
+  Wire.write(DLPF_CONFIG);  // 0x05 -> 10Hz - Tried 0x03 -> 44Hz and the vibration caused it to go haywire
+  // Next step use 0x03 and filter gx gy gz
   Wire.endTransmission();
 
   Wire.beginTransmission(IMU_ADDR);
@@ -30,21 +30,14 @@ void initialize_imu() {
   for (int i = 0; i < samples; i++) {
     imu_signal();
 
-    ax = (float)rax * accel_scale;
-    ay = (float)ray * accel_scale;
-    az = (float)raz * accel_scale;
+    gyro_offsets[x] += (float)rgx * gyro_scale;
+    gyro_offsets[y] += (float)rgy * gyro_scale;
+    gyro_offsets[z] += (float)rgz * gyro_scale;
 
-    gx = (float)rgx * gyro_scale;
-    gy = (float)rgy * gyro_scale;
-    gz = (float)rgz * gyro_scale;
-
-    gyro_offsets[x] += gx;
-    gyro_offsets[y] += gy;
-    gyro_offsets[z] += gz;
-
-    accel_offsets[x] += ax;
-    accel_offsets[y] += ay;
-    accel_offsets[z] += (az - 1);
+    accel_offsets[x] += (float)rax * accel_scale;
+    accel_offsets[y] += (float)ray * accel_scale;
+    accel_offsets[z] += ((float)raz * accel_scale - 1);
+    
     delay(1);
   }
 
