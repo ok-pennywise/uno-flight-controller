@@ -14,8 +14,6 @@
 #define IMU_ADDR 0x68
 #define MAG_ADDR 0x2C
 
-#define DLPF_CONFIG 0x05
-
 constexpr float loop_cycle = 0.002f;
 constexpr uint8_t pid_max_op = 400;
 
@@ -47,7 +45,7 @@ int esc1, esc2, esc3, esc4;
 constexpr float accel_scale = 0.0002441;  // 1 / 4096 -> 7 digits
 constexpr float gyro_scale = 0.0152671;   // 1 / 65.5 -> 7 digits
 
-constexpr float p_roll_angle = 0.0f, p_pitch_angle = p_roll_angle, p_yaw_angle = 0.0f;
+constexpr float p_roll_angle = 1.6f, p_pitch_angle = p_roll_angle, p_yaw_angle = 0.0f;
 
 // P rate is stable at 0.65 - Do not change
 // D rate is stable at 0.008
@@ -165,19 +163,9 @@ void read_orientation() {
   ay = ((float)ray * accel_scale) - accel_offsets[y];
   az = ((float)raz * accel_scale) - accel_offsets[z];
 
-  if (DLPF_CONFIG == 0x03) {
-    constexpr float alpha = 0.7;
-
-    gx = alpha * gx + (1 - alpha) * (((float)rgx * gyro_scale) - gyro_offsets[x]);
-    gy = alpha * gy + (1 - alpha) * (((float)rgy * gyro_scale) - gyro_offsets[y]);
-    gz = alpha * gz + (1 - alpha) * (((float)rgz * gyro_scale) - gyro_offsets[z]);
-
-    // Use this expersion and set DLPF to 0x03 from 0x05
-  } else if (DLPF_CONFIG == 0x05) {
-    gx = ((float)rgx * gyro_scale) - gyro_offsets[x];
-    gy = ((float)rgy * gyro_scale) - gyro_offsets[y];
-    gz = ((float)rgz * gyro_scale) - gyro_offsets[z];
-  }
+  gx = ((float)rgx * gyro_scale) - gyro_offsets[x];
+  gy = ((float)rgy * gyro_scale) - gyro_offsets[y];
+  gz = ((float)rgz * gyro_scale) - gyro_offsets[z];
 
   kalman_1d(&roll_angle, &roll_angle_uncertainity, gx, atan2f(ay, az) * RAD_TO_DEG);
   kalman_1d(&pitch_angle, &pitch_angle_uncertainity,
@@ -299,6 +287,25 @@ void loop() {
   mcpwm_set_duty_in_us(MCPWM_UNIT_0, MCPWM_TIMER_1, MCPWM_OPR_A, esc3);
   mcpwm_set_duty_in_us(MCPWM_UNIT_0, MCPWM_TIMER_1, MCPWM_OPR_B, esc4);
 
+  // constexpr uint32_t esc_mask = (1 << ESC1_PIN) | (1 << ESC2_PIN) | (1 << ESC3_PIN) | (1 << ESC4_PIN);
+
+  // REG_WRITE(GPIO_OUT_W1TS_REG, esc_mask);
+  // int64_t pad = esp_timer_get_time();
+
+  // int64_t esc1_ts = pad + esc1;
+  // int64_t esc2_ts = pad + esc2;
+  // int64_t esc3_ts = pad + esc3;
+  // int64_t esc4_ts = pad + esc4;
+
+  // while (REG_READ(GPIO_OUT_REG) & esc_mask) {
+  //   int64_t current_time = esp_timer_get_time();
+  //   if (current_time >= esc1_ts) REG_WRITE(GPIO_OUT_W1TC_REG, (1 << ESC1_PIN));
+  //   if (current_time >= esc2_ts) REG_WRITE(GPIO_OUT_W1TC_REG, (1 << ESC2_PIN));
+  //   if (current_time >= esc3_ts) REG_WRITE(GPIO_OUT_W1TC_REG, (1 << ESC3_PIN));
+  //   if (current_time >= esc4_ts) REG_WRITE(GPIO_OUT_W1TC_REG, (1 << ESC4_PIN));
+
+  //   if (current_time - pad > 2200) break;
+  // }
   // Visual warning: If execution takes more than 90% of our budget (1800us)
   // we turn on the LED to indicate a CPU bottleneck.
   digitalWrite(INTERNAL_LED_PIN, esp_timer_get_time() - loop_time > loop_cycle * 1e6 * 0.9);

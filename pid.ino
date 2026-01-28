@@ -141,15 +141,15 @@ void command_corrections() {
   adjusted_throttle = desired_throttle;
 
   // Shift tilt compensation to angle mode
-  if (adjusted_throttle > 1100) {
-    constexpr float compensation_gain = 0.2f;
-    constexpr float max_compensation = 100.0f;  // 100us
+  // if (adjusted_throttle > 1100) {
+  //   constexpr float compensation_gain = 0.2f;
+  //   constexpr float max_compensation = 100.0f;  // 100us
 
-    float compensation = desired_throttle * (1.0f - cosf(roll_angle * DEG_TO_RAD) * cosf(pitch_angle * DEG_TO_RAD)) * compensation_gain;
-    if (compensation > max_compensation) compensation = max_compensation;
+  //   float compensation = desired_throttle * (1.0f - cosf(roll_angle * DEG_TO_RAD) * cosf(pitch_angle * DEG_TO_RAD)) * compensation_gain;
+  //   if (compensation > max_compensation) compensation = max_compensation;
 
-    adjusted_throttle += compensation;
-  }
+  //   adjusted_throttle += compensation;
+  // }
 
   if (adjusted_throttle > 1800) adjusted_throttle = 1800;
 

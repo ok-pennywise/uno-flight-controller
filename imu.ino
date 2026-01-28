@@ -6,8 +6,7 @@ void initialize_imu() {
 
   Wire.beginTransmission(IMU_ADDR);
   Wire.write(0x1A);
-  Wire.write(DLPF_CONFIG);  // 0x05 -> 10Hz - Tried 0x03 -> 44Hz and the vibration caused it to go haywire
-  // Next step use 0x03 and filter gx gy gz
+  Wire.write(0x05);
   Wire.endTransmission();
 
   Wire.beginTransmission(IMU_ADDR);
