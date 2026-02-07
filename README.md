@@ -3,11 +3,11 @@
 **A custom flight controller written in C++ for ESP32, built and flown from scratch.**  
 No PX4. No ArduPilot. No prebuilt stacks.
 
-👉 **[Watch the real flight test video](https://drive.google.com/file/d/1yiodxVZ2e_W75nkZD7_hRxJ_GFKJbH9i/view)**
+**[Watch the real flight test video](https://drive.google.com/file/d/1yiodxVZ2e_W75nkZD7_hRxJ_GFKJbH9i/view)**
 
 ---
 
-## ✈️ Overview
+## Overview
 
 This project is a **ground-up implementation of a flight controller**, designed to give full control over:
 
@@ -21,10 +21,10 @@ The controller has been **tested in real flight**, not simulation.
 
 ---
 
-## 🎥 Flight Demo
+## Flight Demo
 
-📹 **Real flight footage:**  
-👉 [Watch on Google Drive](https://drive.google.com/file/d/1yiodxVZ2e_W75nkZD7_hRxJ_GFKJbH9i/view)
+**Real flight footage:**  
+[Watch on Google Drive](https://drive.google.com/file/d/1yiodxVZ2e_W75nkZD7_hRxJ_GFKJbH9i/view)
 
 What the video shows:
 - ESP32 running custom flight firmware
@@ -37,7 +37,7 @@ If it flies, it’s because the control code works.
 
 ---
 
-## 🧠 System Architecture
+## System Architecture
 
 ### Flight Controller (ESP32)
 - **Language:** C++
@@ -71,22 +71,22 @@ The Raspberry Pi acts as a **high-level decision maker**, not a replacement FC.
 
 ---
 
-## 🎮 Flight Modes
+## Flight Modes
 
-### 🟢 Acro Mode
+### Acro Mode
 - Direct angular rate control
 - No self-leveling
 - Pilot fully responsible for attitude
 - Used for tuning and aggressive maneuvering
 
-### 🔵 Angle Mode
+### Angle Mode
 - Self-leveling using IMU data
 - Limited tilt angles
 - Easier manual control and testing
 
 ---
 
-## 🎯 Project Goals
+## Project Goals
 
 - Implement a **real flight controller from first principles**
 - Maintain full ownership of:
@@ -101,32 +101,32 @@ The Raspberry Pi acts as a **high-level decision maker**, not a replacement FC.
 
 ---
 
-## 🚧 Current Status
+## Current Status
 
-- ✅ ESP32 flight controller operational
-- ✅ MPU6050 integration
-- ✅ Acro mode flying
-- ✅ Angle mode flying
-- 🔧 PID tuning refinement
-- 🚧 Autonomous flight (Raspberry Pi 3) in development
+-  ESP32 flight controller operational
+-  MPU6050 integration
+-  Acro mode flying
+-  Angle mode flying
+-  PID tuning refinement
+-  Autonomous flight (Raspberry Pi 3) in development
 
 This is an **active project**.
 
 ---
 
-## ⚠️ Disclaimer
+## Disclaimer
 
 This project is **experimental** and intended for learning and research.
 
-- ❌ Not flight-certified
-- ❌ Not safety-approved
-- ❌ No guarantees of stability or safety
+-  Not flight-certified
+-  Not safety-approved
+-  No guarantees of stability or safety
 
 You are fully responsible for any hardware, property, or personal risk.
 
 ---
 
-## 🤝 Why This Exists
+## Why This Exists
 
 This repository exists to:
 - Prove that a **custom flight controller can be built and flown**
