@@ -1,6 +1,6 @@
 # DIY ESP32 Flight Controller (C++)
 
-A custom-built flight controller written in **C++ for ESP32**, designed and implemented from scratch and validated in **real flight**.
+A custom flight controller written in **C++ for ESP32**, implemented from scratch and validated in **real flight**.
 
 No PX4.  
 No ArduPilot.  
@@ -22,22 +22,22 @@ This project is a ground-up implementation of a multirotor flight controller run
 - Safety and arming logic
 - Motor mixing and timing
 
-All control logic is custom-written and runs in a fixed-time control loop.  
+All control logic is custom-written and executed inside a deterministic, fixed-period control loop.  
 The system has been tested on a real airframe in flight.
 
 ---
 
-## Flight Demo
+## Flight Demonstration
 
-The video linked above shows:
+The linked video shows:
 
 - Real flight footage (not simulation)
 - ESP32 running custom firmware
-- MPU6050 IMU-based attitude estimation
+- MPU6050-based attitude estimation
 - Manual flight in **Acro** and **Angle** modes
 - No external stabilization or autopilot software
 
-If the aircraft is stable, it is due to the control code executing on the ESP32.
+Aircraft stability is achieved entirely through the onboard control algorithms.
 
 ---
 
@@ -46,41 +46,43 @@ If the aircraft is stable, it is due to the control code executing on the ESP32.
 ### Flight Controller
 - **MCU:** ESP32
 - **Language:** C++
-- **Control loop rate:** 500 Hz (2 ms)
-- **Motor output:** MCPWM (ESC PWM signals)
+- **Control loop frequency:** 500 Hz (2 ms)
+- **Motor output:** MCPWM-based ESC control
 
 ### Sensors
-- **IMU:** MPU6050
-  - Accelerometer
-  - Gyroscope
-- **Magnetometer:** External (used for yaw correction)
+- **IMU:** MPU6050  
+  - 3-axis gyroscope  
+  - 3-axis accelerometer
+- **Magnetometer:** External (used for yaw drift correction)
 
 ### Input
-- **RC input:** PPM (interrupt-driven)
+- **RC protocol:** PPM (interrupt-driven)
 
 ### Output
-- **ESCs:** 4 motor outputs (quad configuration)
+- **Motors:** 4 ESC outputs (quadcopter configuration)
 
 ---
 
 ## Software Architecture
 
 ### Main Control Loop
-- Fixed 2 ms loop using `esp_timer_get_time()`
-- Deterministic timing enforcement
-- CPU load monitoring via onboard LED
+- Fixed 2 ms loop enforced using `esp_timer_get_time()`
+- Deterministic timing via busy-wait synchronization
+- CPU budget monitoring using onboard LED
 
 ### Sensor Processing
-- Raw IMU data acquisition over I2C
-- Gyro and accelerometer calibration at startup
-- Scaled physical units (deg/s, g)
+- Raw IMU acquisition over I2C
+- Startup calibration for gyroscope and accelerometer
+- Physical unit scaling (deg/s, g)
 
 ### Attitude Estimation
-- Roll and pitch:
-  - 1D Kalman filter (gyro integration + accelerometer correction)
-- Yaw:
-  - Gyro integration with magnetometer-based drift correction
-  - Declination compensation
+- **Roll and Pitch**
+  - 1D Kalman filter
+  - Gyroscope integration with accelerometer correction
+- **Yaw**
+  - Gyroscope integration
+  - Magnetometer-based drift correction
+  - Magnetic declination compensation
 
 ---
 
@@ -90,15 +92,15 @@ If the aircraft is stable, it is due to the control code executing on the ESP32.
 - Direct angular rate control
 - No self-leveling
 - Pilot commands roll, pitch, and yaw rates
-- Intended for tuning and aggressive control
+- Used for tuning and aggressive maneuvering
 
 ### Angle Mode (Stabilized)
 - Self-leveling roll and pitch
 - Pilot commands desired angles
-- Outer angle loop feeds inner rate loop
-- Tilt-compensated throttle
+- Outer angle loop feeding inner rate loop
+- Throttle tilt compensation applied
 
-Mode switching is locked out if the aircraft is excessively tilted to prevent unsafe transitions.
+Mode switching is inhibited when the aircraft exceeds safe tilt limits.
 
 ---
 
@@ -110,36 +112,36 @@ Mode switching is locked out if the aircraft is excessively tilted to prevent un
 
 ### Features
 - Trapezoidal integration for I-term
-- Derivative based on filtered angular rate
+- Derivative term based on filtered angular rate
 - Output clamping to prevent actuator saturation
 - Integral windup protection
-- Tilt-compensated throttle
+- Throttle compensation for attitude tilt
 
-PID tuning guidance is included directly in the source code.
+Detailed PID tuning guidance is included directly in the source code.
 
 ---
 
 ## Safety and Arming Logic
 
-- Explicit **UNARMED / ARMED / SAFETY_TRIP** states
-- Throttle-low requirement to arm
-- Safety trip if extreme attitude is detected
+- Explicit **UNARMED / ARMED / SAFETY_TRIP** state machine
+- Throttle-low arming requirement
+- Automatic safety trip on excessive roll or pitch
 - Manual reset required after safety trip
-- Motors forced to minimum output when not armed
+- Motors forced to minimum output when disarmed
 
 ---
 
 ## Autonomous Flight (Work in Progress)
 
-A **Raspberry Pi 3** is being integrated as a companion computer for autonomous operation.
+A **Raspberry Pi 3** is being integrated as a companion computer for autonomous flight.
 
-Planned responsibilities of the Raspberry Pi:
+Planned responsibilities of the companion computer:
 - High-level navigation and mission logic
 - Autonomous setpoint generation
-- Sensor fusion beyond IMU (GPS, vision, etc.)
+- Extended sensor fusion (GPS, vision, etc.)
 
 The ESP32 remains the **real-time, safety-critical flight controller**.  
-The Raspberry Pi does not directly drive motors.
+The companion computer does not directly drive motors.
 
 ---
 
@@ -155,26 +157,29 @@ This is an active development project.
 
 ---
 
+## Credits
+
+This project was developed through hands-on experimentation and self-study.
+
+The following resources were instrumental in shaping the understanding behind this flight controller:
+
+- **Carbon Aeronautics** — for teaching multirotor flight dynamics, how a quadcopter moves through 3D space, sensor fusion concepts, and practical filter implementation used for attitude estimation.
+
+- **Joop Brooking** — for practical guidance on flight controller behavior, PID tuning methodology, control loop structure, and real-world flight testing considerations.
+
+All code in this repository is original. These sources influenced the understanding and design approach, not the implementation itself.
+
+---
+
 ## Disclaimer
 
-This project is experimental and intended for learning and research purposes.
+This project is experimental and intended for learning and research purposes only.
 
 - Not flight-certified
 - Not safety-approved
 - No guarantees of stability or reliability
 
 Use at your own risk. You are responsible for all hardware, property, and personal safety.
-
----
-
-## Purpose
-
-This repository exists to:
-
-- Demonstrate a working custom flight controller
-- Share low-level implementation details
-- Provide a learning reference for flight control systems
-- Encourage understanding beyond black-box autopilots
 
 ---
 
