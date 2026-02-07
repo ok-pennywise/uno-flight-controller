@@ -1,141 +1,182 @@
-# DIY Open-Source Flight Controller (ESP32)
+# DIY ESP32 Flight Controller (C++)
 
-**A custom flight controller written in C++ for ESP32, built and flown from scratch.**  
-No PX4. No ArduPilot. No prebuilt stacks.
+A custom-built flight controller written in **C++ for ESP32**, designed and implemented from scratch and validated in **real flight**.
 
-**[Watch the real flight test video](https://drive.google.com/file/d/1yiodxVZ2e_W75nkZD7_hRxJ_GFKJbH9i/view)**
+No PX4.  
+No ArduPilot.  
+No prebuilt flight stack.
+
+**Flight test video:**  
+https://drive.google.com/file/d/1yiodxVZ2e_W75nkZD7_hRxJ_GFKJbH9i/view
 
 ---
 
 ## Overview
 
-This project is a **ground-up implementation of a flight controller**, designed to give full control over:
+This project is a ground-up implementation of a multirotor flight controller running on an **ESP32**, with full ownership of:
 
-- Sensor fusion
+- Sensor acquisition
 - Attitude estimation
 - Control loops
 - Flight modes
-- Hardware timing
+- Safety and arming logic
+- Motor mixing and timing
 
-The controller has been **tested in real flight**, not simulation.
+All control logic is custom-written and runs in a fixed-time control loop.  
+The system has been tested on a real airframe in flight.
 
 ---
 
 ## Flight Demo
 
-**Real flight footage:**  
-[Watch on Google Drive](https://drive.google.com/file/d/1yiodxVZ2e_W75nkZD7_hRxJ_GFKJbH9i/view)
+The video linked above shows:
 
-What the video shows:
-- ESP32 running custom flight firmware
-- MPU6050 IMU for attitude sensing
+- Real flight footage (not simulation)
+- ESP32 running custom firmware
+- MPU6050 IMU-based attitude estimation
 - Manual flight in **Acro** and **Angle** modes
-- Real motors, ESCs, and airframe
-- No external stabilization systems
+- No external stabilization or autopilot software
 
-If it flies, it’s because the control code works.
+If the aircraft is stable, it is due to the control code executing on the ESP32.
 
 ---
 
-## System Architecture
+## Hardware
 
-### Flight Controller (ESP32)
-- **Language:** C++
+### Flight Controller
 - **MCU:** ESP32
-- **IMU:** MPU6050
-- **Loop:** High-rate control loop (sensor → estimate → control → output)
-- **Modes:**
-  - **Acro Mode** (rate control)
-  - **Angle Mode** (self-leveling)
+- **Language:** C++
+- **Control loop rate:** 500 Hz (2 ms)
+- **Motor output:** MCPWM (ESC PWM signals)
 
-Responsibilities:
-- Sensor sampling
-- Attitude estimation
-- PID control
-- Motor mixing
-- RC input handling
+### Sensors
+- **IMU:** MPU6050
+  - Accelerometer
+  - Gyroscope
+- **Magnetometer:** External (used for yaw correction)
+
+### Input
+- **RC input:** PPM (interrupt-driven)
+
+### Output
+- **ESCs:** 4 motor outputs (quad configuration)
 
 ---
 
-### Companion Computer (Autonomous Flight – WIP)
-- **Platform:** Raspberry Pi 3
-- **Purpose:** High-level autonomy
-- **Planned responsibilities:**
-  - Navigation logic
-  - Mission planning
-  - Sensor fusion beyond IMU (GPS / vision / etc.)
-  - Commanding the ESP32 flight controller
+## Software Architecture
 
-The ESP32 remains the **real-time safety-critical controller**.  
-The Raspberry Pi acts as a **high-level decision maker**, not a replacement FC.
+### Main Control Loop
+- Fixed 2 ms loop using `esp_timer_get_time()`
+- Deterministic timing enforcement
+- CPU load monitoring via onboard LED
+
+### Sensor Processing
+- Raw IMU data acquisition over I2C
+- Gyro and accelerometer calibration at startup
+- Scaled physical units (deg/s, g)
+
+### Attitude Estimation
+- Roll and pitch:
+  - 1D Kalman filter (gyro integration + accelerometer correction)
+- Yaw:
+  - Gyro integration with magnetometer-based drift correction
+  - Declination compensation
 
 ---
 
 ## Flight Modes
 
-### Acro Mode
+### Acro Mode (Rate Mode)
 - Direct angular rate control
 - No self-leveling
-- Pilot fully responsible for attitude
-- Used for tuning and aggressive maneuvering
+- Pilot commands roll, pitch, and yaw rates
+- Intended for tuning and aggressive control
 
-### Angle Mode
-- Self-leveling using IMU data
-- Limited tilt angles
-- Easier manual control and testing
+### Angle Mode (Stabilized)
+- Self-leveling roll and pitch
+- Pilot commands desired angles
+- Outer angle loop feeds inner rate loop
+- Tilt-compensated throttle
 
----
-
-## Project Goals
-
-- Implement a **real flight controller from first principles**
-- Maintain full ownership of:
-  - Timing
-  - Control laws
-  - Sensor handling
-- Keep the code:
-  - Minimal
-  - Readable
-  - Hackable
-- Validate everything with **actual flight tests**
+Mode switching is locked out if the aircraft is excessively tilted to prevent unsafe transitions.
 
 ---
 
-## Current Status
+## Control System
 
--  ESP32 flight controller operational
--  MPU6050 integration
--  Acro mode flying
--  Angle mode flying
--  PID tuning refinement
--  Autonomous flight (Raspberry Pi 3) in development
+### PID Structure
+- **Inner loop:** Rate PID (roll, pitch, yaw)
+- **Outer loop:** Angle P controller (Angle mode only)
 
-This is an **active project**.
+### Features
+- Trapezoidal integration for I-term
+- Derivative based on filtered angular rate
+- Output clamping to prevent actuator saturation
+- Integral windup protection
+- Tilt-compensated throttle
+
+PID tuning guidance is included directly in the source code.
+
+---
+
+## Safety and Arming Logic
+
+- Explicit **UNARMED / ARMED / SAFETY_TRIP** states
+- Throttle-low requirement to arm
+- Safety trip if extreme attitude is detected
+- Manual reset required after safety trip
+- Motors forced to minimum output when not armed
+
+---
+
+## Autonomous Flight (Work in Progress)
+
+A **Raspberry Pi 3** is being integrated as a companion computer for autonomous operation.
+
+Planned responsibilities of the Raspberry Pi:
+- High-level navigation and mission logic
+- Autonomous setpoint generation
+- Sensor fusion beyond IMU (GPS, vision, etc.)
+
+The ESP32 remains the **real-time, safety-critical flight controller**.  
+The Raspberry Pi does not directly drive motors.
+
+---
+
+## Project Status
+
+- Stable manual flight achieved
+- Acro mode operational
+- Angle mode operational
+- Safety and arming logic implemented
+- Autonomous flight integration in progress
+
+This is an active development project.
 
 ---
 
 ## Disclaimer
 
-This project is **experimental** and intended for learning and research.
+This project is experimental and intended for learning and research purposes.
 
--  Not flight-certified
--  Not safety-approved
--  No guarantees of stability or safety
+- Not flight-certified
+- Not safety-approved
+- No guarantees of stability or reliability
 
-You are fully responsible for any hardware, property, or personal risk.
+Use at your own risk. You are responsible for all hardware, property, and personal safety.
 
 ---
 
-## Why This Exists
+## Purpose
 
 This repository exists to:
-- Prove that a **custom flight controller can be built and flown**
-- Share implementation ideas
-- Serve as a learning reference for flight control systems
-- Encourage understanding beyond black-box autopilots
 
-If you want to know how flight controllers *actually* work — this repo is for you.
+- Demonstrate a working custom flight controller
+- Share low-level implementation details
+- Provide a learning reference for flight control systems
+- Encourage understanding beyond black-box autopilots
 
 ---
 
-**Built from scratch. Tested in the air. Still evolving.**
+Built from scratch.  
+Flown in the real world.
