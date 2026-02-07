@@ -57,4 +57,8 @@ void mag_signal() {
   rmx = (int16_t)(Wire.read() | (Wire.read() << 8));
   rmy = (int16_t)(Wire.read() | (Wire.read() << 8));
   rmz = (int16_t)(Wire.read() | (Wire.read() << 8));
+
+  mx = ((float)rmx - mag_offsets[x]) * mag_scales[x];
+  my = ((float)rmy - mag_offsets[y]) * mag_scales[y];
+  mz = ((float)rmz - mag_offsets[z]) * mag_scales[z];
 }

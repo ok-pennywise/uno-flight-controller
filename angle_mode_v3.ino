@@ -7,7 +7,6 @@
 #define z 2
 
 #define INTERNAL_LED_PIN 2
-
 #define RC_CH_COUNT 6
 
 // Addresses
@@ -15,6 +14,7 @@
 #define MAG_ADDR 0x2C
 
 constexpr float loop_cycle = 0.002f;
+constexpr uint16_t loop_cycle_us = 2000;
 constexpr uint8_t pid_max_op = 400;
 
 #define CH1 0
@@ -24,7 +24,7 @@ constexpr uint8_t pid_max_op = 400;
 #define CH5 4
 #define CH6 5
 
-#define PPM_PIN 32
+#define PPM_PIN 23
 
 volatile uint16_t radio[RC_CH_COUNT] = { 1500, 1500, 1000, 1500, 1000, 1000 };
 float radio_filtered[RC_CH_COUNT] = { 1500.0f, 1500.0f, 1000.0f, 1500.0f, 1000.0f, 1000.0f };
@@ -32,15 +32,12 @@ volatile uint8_t channel_index;
 volatile int64_t ppm_last_rise_time;
 portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
 
-#define ESC1_PIN 25
-#define ESC2_PIN 14
-#define ESC3_PIN 27
-#define ESC4_PIN 26
+#define ESC1_PIN 19
+#define ESC2_PIN 18
+#define ESC3_PIN 26
+#define ESC4_PIN 25
 
 int esc1, esc2, esc3, esc4;
-
-#define SCL_PIN 19
-#define SDA_PIN 21
 
 constexpr float accel_scale = 0.0002441;  // 1 / 4096 -> 7 digits
 constexpr float gyro_scale = 0.0152671;   // 1 / 65.5 -> 7 digits
@@ -49,10 +46,8 @@ constexpr float p_roll_angle = 1.6f, p_pitch_angle = p_roll_angle, p_yaw_angle =
 
 // P rate is stable at 0.65 - Do not change
 // D rate is stable at 0.008
-// I rate is stable at 0.07
-
-// Rate PID is stable - Do not change
-constexpr float p_roll_rate = 0.65f, i_roll_rate = 0.07f, d_roll_rate = 0.008f;
+// I rate is stable at 0.08
+constexpr float p_roll_rate = 0.65f, i_roll_rate = 0.08f, d_roll_rate = 0.008f;
 constexpr float p_pitch_rate = p_roll_rate, i_pitch_rate = i_roll_rate, d_pitch_rate = d_roll_rate;
 
 constexpr float p_yaw_rate = 1.5f, i_yaw_rate = 3.0f, d_yaw_rate = 0.0f;
@@ -68,8 +63,6 @@ float mag_offsets[3], mag_scales[3];
 
 float roll_angle, pitch_angle, yaw_angle;
 float roll_angle_uncertainity = 4.0f, pitch_angle_uncertainity = 4.0f, yaw_angle_uncertainity = 4.0f;
-
-float accel_due_to_gravity;
 
 float desired_roll_rate, desired_pitch_rate, desired_yaw_rate, desired_throttle;
 float desired_roll_angle, desired_pitch_angle, desired_yaw_angle;
@@ -88,9 +81,8 @@ float prev_i_term_roll_rate, prev_i_term_pitch_rate, prev_i_term_yaw_rate;
 float prev_i_term_roll_angle, prev_i_term_pitch_angle, prev_i_term_yaw_angle;
 
 constexpr float mag_declination = -0.25f;
-uint8_t mag_read_counter;
 
-int64_t loop_time;
+int64_t loop_time, mag_read_time, baro_read_time;
 
 Preferences prefs;
 // States
@@ -100,7 +92,6 @@ enum STATES { UNARMED,
 
 STATES state = UNARMED;
 
-// Modes
 enum FLIGHT_MODES { ANGLE_MODE,
                     ACRO_MODE };
 
@@ -159,18 +150,41 @@ void kalman_1d(float* state, float* uncertainty, float rate, float angle) {
 }
 
 void read_orientation() {
-  ax = ((float)rax * accel_scale) - accel_offsets[x];
-  ay = ((float)ray * accel_scale) - accel_offsets[y];
-  az = ((float)raz * accel_scale) - accel_offsets[z];
-
-  gx = ((float)rgx * gyro_scale) - gyro_offsets[x];
-  gy = ((float)rgy * gyro_scale) - gyro_offsets[y];
-  gz = ((float)rgz * gyro_scale) - gyro_offsets[z];
-
   kalman_1d(&roll_angle, &roll_angle_uncertainity, gx, atan2f(ay, az) * RAD_TO_DEG);
   kalman_1d(&pitch_angle, &pitch_angle_uncertainity,
             gy,
             atan2f(-ax, sqrtf(ay * ay + az * az)) * RAD_TO_DEG);
+
+  yaw_angle += gz * loop_cycle;
+
+  float r_rad = roll_angle * DEG_TO_RAD;
+  float p_rad = pitch_angle * DEG_TO_RAD;
+
+  float cr = cosf(r_rad);
+  float cp = cosf(p_rad);
+
+  float sr = sinf(r_rad);
+  float sp = sinf(p_rad);
+
+  float mx_horizontal = mx * cp + my * sr * sp + mz * cr * sp;
+
+  float my_horizontal = my * cr - mz * sr;
+
+  float heading = atan2f(my_horizontal, mx_horizontal) * RAD_TO_DEG;
+
+  if (heading > 360.0f) heading -= 360.0f;
+  if (heading < 0.0f) heading += 360.0f;
+
+  float error = heading - yaw_angle;
+
+  if (error > 180.0f) error -= 360.0f;
+  if (error < -180.0f) error += 360.0f;
+
+  yaw_angle += 0.3 * error;
+  yaw_angle += mag_declination;
+
+  if (yaw_angle > 360.0f) yaw_angle -= 360.0f;
+  if (yaw_angle < 0.0f) yaw_angle += 360.0f;
 }
 
 void toggle_mode() {
@@ -213,8 +227,6 @@ void translate_flight_mode() {
         30.0f * ((radio_filtered[CH1] - 1500.0f) / 500.0f);  // 30°
       desired_pitch_angle =
         30.0f * ((radio_filtered[CH2] - 1500.0f) / 500.0f);  // 30°
-      desired_yaw_rate =
-        100.0f * ((radio_filtered[CH4] - 1500.0f) / 500.0f);  // 100°/s
       break;
 
     case ACRO_MODE:
@@ -223,17 +235,17 @@ void translate_flight_mode() {
         75.0f * ((radio_filtered[CH1] - 1500.0f) / 500.0f);  // 75°/s
       desired_pitch_rate =
         75.0f * ((radio_filtered[CH2] - 1500.0f) / 500.0f);  // 75°/s
-      desired_yaw_rate =
-        100.0f * ((radio_filtered[CH4] - 1500.0f) / 500.0f);  // 100°/s
       break;
   }
+  desired_yaw_rate =
+    100.0f * ((radio_filtered[CH4] - 1500.0f) / 500.0f);  // 100°/s
   desired_throttle =
     radio_filtered[CH3];
 }
 
 void setup() {
   // Serial.begin(115200);
-  Wire.begin(SDA_PIN, SCL_PIN);
+  Wire.begin();
   Wire.setClock(400000);
 
   pinMode(INTERNAL_LED_PIN, OUTPUT);
@@ -255,6 +267,7 @@ void setup() {
   delay(2000);
 
   initialize_imu();
+  initialize_mag();
 
   attachInterrupt(digitalPinToInterrupt(PPM_PIN), radio_ppm_isr, RISING);
   loop_time = esp_timer_get_time();
@@ -263,7 +276,7 @@ void setup() {
 
 void loop() {
   // Wait until exactly loop_time have passed since the start of the last loop
-  while (esp_timer_get_time() - loop_time < (loop_cycle * 1e6))
+  while (esp_timer_get_time() - loop_time < loop_cycle_us)
     ;
 
   // Reset loop time
@@ -287,26 +300,11 @@ void loop() {
   mcpwm_set_duty_in_us(MCPWM_UNIT_0, MCPWM_TIMER_1, MCPWM_OPR_A, esc3);
   mcpwm_set_duty_in_us(MCPWM_UNIT_0, MCPWM_TIMER_1, MCPWM_OPR_B, esc4);
 
-  // constexpr uint32_t esc_mask = (1 << ESC1_PIN) | (1 << ESC2_PIN) | (1 << ESC3_PIN) | (1 << ESC4_PIN);
-
-  // REG_WRITE(GPIO_OUT_W1TS_REG, esc_mask);
-  // int64_t pad = esp_timer_get_time();
-
-  // int64_t esc1_ts = pad + esc1;
-  // int64_t esc2_ts = pad + esc2;
-  // int64_t esc3_ts = pad + esc3;
-  // int64_t esc4_ts = pad + esc4;
-
-  // while (REG_READ(GPIO_OUT_REG) & esc_mask) {
-  //   int64_t current_time = esp_timer_get_time();
-  //   if (current_time >= esc1_ts) REG_WRITE(GPIO_OUT_W1TC_REG, (1 << ESC1_PIN));
-  //   if (current_time >= esc2_ts) REG_WRITE(GPIO_OUT_W1TC_REG, (1 << ESC2_PIN));
-  //   if (current_time >= esc3_ts) REG_WRITE(GPIO_OUT_W1TC_REG, (1 << ESC3_PIN));
-  //   if (current_time >= esc4_ts) REG_WRITE(GPIO_OUT_W1TC_REG, (1 << ESC4_PIN));
-
-  //   if (current_time - pad > 2200) break;
-  // }
+  if (esp_timer_get_time() - mag_read_time >= 5 * 1e3) {  // 200Hz
+    mag_signal();
+    mag_read_time += 5 * 1e3;
+  }
   // Visual warning: If execution takes more than 90% of our budget (1800us)
   // we turn on the LED to indicate a CPU bottleneck.
-  digitalWrite(INTERNAL_LED_PIN, esp_timer_get_time() - loop_time > loop_cycle * 1e6 * 0.9);
+  digitalWrite(INTERNAL_LED_PIN, esp_timer_get_time() - loop_time > loop_cycle_us * 0.9);
 }

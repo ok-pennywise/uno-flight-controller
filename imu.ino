@@ -36,7 +36,7 @@ void initialize_imu() {
     accel_offsets[x] += (float)rax * accel_scale;
     accel_offsets[y] += (float)ray * accel_scale;
     accel_offsets[z] += ((float)raz * accel_scale - 1);
-    
+
     delay(1);
   }
 
@@ -66,4 +66,12 @@ void imu_signal() {
   rgx = (int16_t)(Wire.read() << 8 | Wire.read());
   rgy = (int16_t)(Wire.read() << 8 | Wire.read());
   rgz = (int16_t)(Wire.read() << 8 | Wire.read());
+
+  ax = ((float)rax * accel_scale) - accel_offsets[x];
+  ay = ((float)ray * accel_scale) - accel_offsets[y];
+  az = ((float)raz * accel_scale) - accel_offsets[z];
+
+  gx = ((float)rgx * gyro_scale) - gyro_offsets[x];
+  gy = ((float)rgy * gyro_scale) - gyro_offsets[y];
+  gz = ((float)rgz * gyro_scale) - gyro_offsets[z];
 }
