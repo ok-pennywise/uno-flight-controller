@@ -1,6 +1,6 @@
 # DIY ESP32 Flight Controller (C++)
 
-A custom flight controller written in **C++ for ESP32**, implemented from scratch and validated in **real flight**.
+A custom flight controller written in **C++ for ESP32**, designed, implemented, and validated through **real flight testing**.
 
 No PX4.  
 No ArduPilot.  
@@ -11,9 +11,28 @@ https://drive.google.com/file/d/1yiodxVZ2e_W75nkZD7_hRxJ_GFKJbH9i/view
 
 ---
 
+## Project Background
+
+This project initially started as a learning experiment using an **Arduino Uno**, with the goal of understanding the fundamentals of multirotor flight control.
+
+While the Uno was useful for early experimentation, it quickly proved to be **too limited** for a real flight controller due to:
+- Insufficient processing power
+- Poor timing precision for high-rate control loops
+- Limited headroom for filtering and control logic
+
+As a result, the project was redesigned around the **ESP32**, enabling:
+- Higher control loop rates
+- Deterministic timing using hardware timers
+- Reliable sensor fusion
+- Stable real-world flight performance
+
+All current development targets the ESP32 platform.
+
+---
+
 ## Overview
 
-This project is a ground-up implementation of a multirotor flight controller running on an **ESP32**, with full ownership of:
+This repository contains a **ground-up implementation** of a multirotor flight controller, with full ownership of:
 
 - Sensor acquisition
 - Attitude estimation
@@ -22,14 +41,14 @@ This project is a ground-up implementation of a multirotor flight controller run
 - Safety and arming logic
 - Motor mixing and timing
 
-All control logic is custom-written and executed inside a deterministic, fixed-period control loop.  
-The system has been tested on a real airframe in flight.
+All logic is custom-written and executed inside a fixed-period control loop.  
+The system has been tested on a real quadcopter airframe.
 
 ---
 
 ## Flight Demonstration
 
-The linked video shows:
+The flight video linked above shows:
 
 - Real flight footage (not simulation)
 - ESP32 running custom firmware
@@ -37,7 +56,7 @@ The linked video shows:
 - Manual flight in **Acro** and **Angle** modes
 - No external stabilization or autopilot software
 
-Aircraft stability is achieved entirely through the onboard control algorithms.
+Aircraft stability is achieved entirely through onboard estimation and control algorithms.
 
 ---
 
@@ -67,8 +86,8 @@ Aircraft stability is achieved entirely through the onboard control algorithms.
 
 ### Main Control Loop
 - Fixed 2 ms loop enforced using `esp_timer_get_time()`
-- Deterministic timing via busy-wait synchronization
-- CPU budget monitoring using onboard LED
+- Busy-wait synchronization for deterministic timing
+- CPU execution budget monitoring via onboard LED
 
 ### Sensor Processing
 - Raw IMU acquisition over I2C
@@ -115,16 +134,16 @@ Mode switching is inhibited when the aircraft exceeds safe tilt limits.
 - Derivative term based on filtered angular rate
 - Output clamping to prevent actuator saturation
 - Integral windup protection
-- Throttle compensation for attitude tilt
+- Tilt-compensated throttle
 
-Detailed PID tuning guidance is included directly in the source code.
+Detailed PID tuning guidance is included directly in the source code comments.
 
 ---
 
 ## Safety and Arming Logic
 
 - Explicit **UNARMED / ARMED / SAFETY_TRIP** state machine
-- Throttle-low arming requirement
+- Throttle-low requirement to arm
 - Automatic safety trip on excessive roll or pitch
 - Manual reset required after safety trip
 - Motors forced to minimum output when disarmed
@@ -133,7 +152,7 @@ Detailed PID tuning guidance is included directly in the source code.
 
 ## Autonomous Flight (Work in Progress)
 
-A **Raspberry Pi 3** is being integrated as a companion computer for autonomous flight.
+A **Raspberry Pi 3** is being integrated as a companion computer for autonomous flight capabilities.
 
 Planned responsibilities of the companion computer:
 - High-level navigation and mission logic
@@ -141,7 +160,7 @@ Planned responsibilities of the companion computer:
 - Extended sensor fusion (GPS, vision, etc.)
 
 The ESP32 remains the **real-time, safety-critical flight controller**.  
-The companion computer does not directly drive motors.
+The Raspberry Pi does not directly drive motors.
 
 ---
 
@@ -151,7 +170,7 @@ The companion computer does not directly drive motors.
 - Acro mode operational
 - Angle mode operational
 - Safety and arming logic implemented
-- Autonomous flight integration in progress
+- Autonomous flight development in progress
 
 This is an active development project.
 
@@ -161,13 +180,13 @@ This is an active development project.
 
 This project was developed through hands-on experimentation and self-study.
 
-The following resources were instrumental in shaping the understanding behind this flight controller:
+Key learning sources:
 
-- **Carbon Aeronautics** — for teaching multirotor flight dynamics, how a quadcopter moves through 3D space, sensor fusion concepts, and practical filter implementation used for attitude estimation.
+- **Carbon Aeronautics** — for teaching multirotor flight dynamics, how a quadcopter moves through 3D space, sensor fusion principles, and practical filter implementation.
 
-- **Joop Brooking** — for practical guidance on flight controller behavior, PID tuning methodology, control loop structure, and real-world flight testing considerations.
+- **Joop Brooking** — for practical insight into flight controller behavior, PID tuning methodology, control loop structure, and real-world flight testing.
 
-All code in this repository is original. These sources influenced the understanding and design approach, not the implementation itself.
+All code in this repository is original. These resources influenced understanding and design decisions, not the implementation.
 
 ---
 
